@@ -7,9 +7,9 @@ import ahrs
 
 def getEulerAngle(desiredTime: int):
     """ 
-    Returns the average Euler angles (roll, pitch, yaw) in degrees for the given epoch timestamp.
+    Returns the average Euler angles (roll, pitch, yaw) in degrees for the given epoch millisecond times.
     Args:
-        desiredTime (int): The epoch timestamp to query for sensor data.
+        desiredTime (int): The epoch millisecond time to query for sensor data.
     Returns:
         Tuple[float, float, float]: The average Euler angles (roll, pitch, yaw) in degrees.
     """
@@ -24,12 +24,12 @@ def getEulerAngle(desiredTime: int):
     accel_list = []
     gyro_list = []
     for data in imu_data:
-        accel_list.append(data.getAccelerometer())
-        gyro_list.append(data.getGyroscope())
+        accel_list.append(data.getAccel())
+        gyro_list.append(data.getGyro())
 
     accel = numpy.array(accel_list)
     gyro = numpy.array(gyro_list)    
-    mag = numpy.array(data.getMagnetometer() for data in mag_data)
+    mag = numpy.array([data.getMag() for data in mag_data])
 
     # get the orientation
     quats = orientationFLAE(mag, accel, gyro)
@@ -78,8 +78,7 @@ def equalize_list_lengths(list1, list2):
     """
     # Check if either list is empty
     if not list1 or not list2:
-        print("One of the lists of sensor data is empty")
-        return list1, list2 
+        raise ValueError("Both lists must have elements.")
     
     len1, len2 = len(list1), len(list2)
     

@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import datetime
 
-DATA_LOGGER_PATH = './data-logger.v1.4.4-gnss.db'
+DATA_LOGGER_PATH = '/data/recording/data-logger.v1.4.4.db'
 
 class IMUData():
     def __init__(self, ax, ay, az, gx, gy, gz):
@@ -24,7 +24,7 @@ class MagnetometerData():
         self.my = my
         self.mz = mz
     
-    def getMagnetometer(self):
+    def getMag(self):
         return [self.mx, self.my, self.mz]
 
 class SqliteInterface:
@@ -44,8 +44,8 @@ class SqliteInterface:
         query = f'''
                     SELECT acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z 
                     FROM imu 
-                    WHERE time > \'{datetime.fromtimestamp(desiredTime - pastRange)}\'
-                    AND time <= \'{datetime.fromtimestamp(desiredTime)}\'
+                    WHERE time > \'{datetime.fromtimestamp((desiredTime - pastRange)/1000.0)}\'
+                    AND time <= \'{datetime.fromtimestamp(desiredTime/1000.0)}\'
                     ORDER BY time DESC
                 '''
         rows = self.cursor.execute(query).fetchall()
@@ -66,12 +66,12 @@ class SqliteInterface:
         query = f'''
                     SELECT mag_x, mag_y, mag_z 
                     FROM magnetometer
-                    WHERE system_time > \'{datetime.fromtimestamp(desiredTime - pastRange)}\'
-                    AND system_time <= \'{datetime.fromtimestamp(desiredTime)}\'
+                    WHERE system_time > \'{datetime.fromtimestamp((desiredTime - pastRange)/1000.0)}\'
+                    AND system_time <= \'{datetime.fromtimestamp(desiredTime/1000.0)}\'
                     ORDER BY system_time DESC
                 '''
         rows = self.cursor.execute(query).fetchall()
-        results = [MagnetometerData(row[0], row[1], row[2]) for row in rows]
+        results = [MagnetometerData(float(row[0]), float(row[1]), float(row[2])) for row in rows]
         return results
     
     
