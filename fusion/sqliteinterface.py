@@ -71,7 +71,7 @@ class SqliteInterface:
                     ORDER BY system_time DESC
                 '''
         rows = self.cursor.execute(query).fetchall()
-        results = [MagnetometerData(float(row[0]), float(row[1]), float(row[2])) for row in rows]
+        results = [MagnetometerData(row[0], row[1], row[2]) for row in rows]
         return results
     
     
