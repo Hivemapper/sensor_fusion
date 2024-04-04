@@ -1,2 +1,2 @@
-from .sqliteinterface import getGnssData, getImuData, getMagnetometerData
-from .sensorFusion import getEulerAngles
+from .sqliteinterface import getGnssData, getImuData, getMagnetometerData, calculate_average
+from .orientation import getEulerAngle, isUpsideDown
