@@ -99,3 +99,28 @@ def getMagnetometerData(desiredTime: int):
 #TODO: Fully implement this function
 def getGnssData(since, until=None):
     return sqliteInterface.queryGnss(since, until)
+
+
+################ Helper Functions ################
+
+def calculate_average(data_list):
+    if not data_list:
+        return None
+    
+    num_instances = len(data_list)
+    sum_values = {}
+    attribute_names = [attr for attr in dir(data_list[0]) if not attr.startswith("__") and not callable(getattr(data_list[0], attr))]
+    
+    # Initialize sum_values dictionary
+    for attr in attribute_names:
+        sum_values[attr] = 0
+    
+    # Sum up values for each attribute
+    for instance in data_list:
+        for attr in attribute_names:
+            sum_values[attr] += getattr(instance, attr)
+    
+    # Calculate the average for each attribute
+    avg_values = {attr: total / num_instances for attr, total in sum_values.items()}
+    
+    return avg_values

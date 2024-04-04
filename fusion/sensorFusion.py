@@ -1,43 +1,5 @@
-from .sqliteinterface import getGnssData, getImuData, getMagnetometerData
 import numpy
 import ahrs
-
-
-########### TOP LEVEL SENSOR FUSION ORIENTATION ALGO ############
-
-def getEulerAngle(desiredTime: int):
-    """ 
-    Returns the average Euler angles (roll, pitch, yaw) in degrees for the given epoch millisecond times.
-    Args:
-        desiredTime (int): The epoch millisecond time to query for sensor data.
-    Returns:
-        Tuple[float, float, float]: The average Euler angles (roll, pitch, yaw) in degrees.
-    """
-    # get data from the database
-    imu_data = getImuData(desiredTime)
-    mag_data = getMagnetometerData(desiredTime)
-
-    # Ensure same number of samples
-    imu_data, mag_data = equalize_list_lengths(imu_data, mag_data)
-
-    # extract the data from the objects
-    accel_list = []
-    gyro_list = []
-    for data in imu_data:
-        accel_list.append(data.getAccel())
-        gyro_list.append(data.getGyro())
-
-    accel = numpy.array(accel_list)
-    gyro = numpy.array(gyro_list)    
-    mag = numpy.array([data.getMag() for data in mag_data])
-
-    # get the orientation
-    quats = orientationFLAE(mag, accel, gyro)
-    euler_list = convertToEuler(quats)
-    avg_euler = averageEulerAngles(euler_list)
-    # Modification for FLAE
-    avg_euler = (avg_euler[0], avg_euler[1]*-1, avg_euler[2])
-    return avg_euler
 
 
 ########### HELPER FUNCTIONS ############
@@ -98,6 +60,8 @@ def equalize_list_lengths(list1, list2):
 SF_MAGNETIC_REF = [22371.8, 5180, 41715.1]
 SF_MAGNETIC_DIP = 61.16779
 SENSOR_FREQ = 38.0
+
+########### FUSION ALGORITHM FUNCTIONS ############
 
 def orientationAQUA(mag, accel, gyro):
     orientation = ahrs.filters.AQUA(gyr=gyro, acc=accel, mag=mag, frequency=38.0, adaptive=True)
