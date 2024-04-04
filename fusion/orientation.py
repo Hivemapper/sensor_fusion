@@ -34,7 +34,7 @@ def getEulerAngle(desiredTime: int):
     euler_list = convertToEuler(quats)
     avg_euler = averageEulerAngles(euler_list)
     # Modification for FLAE
-    avg_euler = (avg_euler[0], avg_euler[1]*-1, avg_euler[2])
+    avg_euler = [avg_euler[0], avg_euler[1]*-1, avg_euler[2]]
     return avg_euler
 
 
