@@ -26,6 +26,40 @@ class MagnetometerData():
     
     def getMag(self):
         return [self.mx, self.my, self.mz]
+    
+class GNSSData():
+    def __init__(self, lat, lon, alt, speed, heading, headingAccuracy, hdop, gdop):
+        self.lat = lat
+        self.lon = lon
+        self.alt = alt
+        self.speed = speed
+        self.heading = heading
+        self.headingAccuracy = headingAccuracy
+        self.hdop = hdop
+        self.gdop = gdop
+
+    def getLatLon(self):
+        return [self.lat, self.lon]
+
+    def getAltitude(self):
+        return self.alt
+
+    def getSpeed(self):
+        return self.speed
+
+    def getHeading(self):
+        return self.heading
+    
+    def getHeadingAccuracy(self):
+        return self.headingAccuracy
+
+    def getHdop(self):
+        return self.hdop
+    
+    def getGdop(self):
+        return self.gdop
+    
+
 
 class SqliteInterface:
     def __init__(self) -> None:
@@ -74,18 +108,16 @@ class SqliteInterface:
         results = [MagnetometerData(row[0], row[1], row[2]) for row in rows]
         return results
     
-    
-    # TODO: Implement if needed, this is a skeleton for the gnss query
-    def queryGnss(self, since, until):
+    def queryGnss(self, desiredTime: int, pastRange: int = 500):
         query = f'''
-                    SELECT *
+                    SELECT latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop
                     FROM gnss 
-                    WHERE system_time > '{since}'
+                    WHERE system_time > \'{datetime.fromtimestamp((desiredTime - pastRange)/1000.0)}\'
+                    AND system_time <= \'{datetime.fromtimestamp(desiredTime/1000.0)}\'
+                    ORDER BY system_time DESC
                 '''
-        if until is not None:
-            query += f' AND system_time < \'{until}\''
-
         results = self.cursor.execute(query).fetchall()
+        results = [GNSSData(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]) for row in results]
         return results
 
 sqliteInterface = SqliteInterface()
@@ -96,9 +128,8 @@ def getImuData(desiredTime: int):
 def getMagnetometerData(desiredTime: int):
     return sqliteInterface.queryMagnetometer(desiredTime)
 
-#TODO: Fully implement this function
-def getGnssData(since, until=None):
-    return sqliteInterface.queryGnss(since, until)
+def getGnssData(desiredTime: int):
+    return sqliteInterface.queryGnss(desiredTime)
 
 
 ################ Helper Functions ################

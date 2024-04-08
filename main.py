@@ -37,6 +37,17 @@ def printMagData():
         print(f"mag_x: {mag_now['mx']}, mag_y:{mag_now['my']}, mag_z:{mag_now['mz']}")
         time.sleep(0.1)
 
+def printGNSSData():
+    while True:
+        now = int(time.time()*1000) - 500
+        gnss = fusion.getGnssData(now)
+        if len(gnss) == 0:
+            # print("No GNSS data available")
+            continue
+        gnss_now = fusion.calculate_average(gnss)
+        print(f"speed:{gnss_now['speed']}, heading:{gnss_now['heading']}, headingAccuracy:{gnss_now['headingAccuracy']}")
+        time.sleep(0.1)
+
 def printIsUpsideDown():
     while True:
         now = int(time.time()*1000) - 500
@@ -52,6 +63,7 @@ if __name__ == "__main__":
     # printAccelData()
     # printGyroData()
     # printMagData()
+    # printGNSSData()
     # printIsUpsideDown()
 
 
