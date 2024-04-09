@@ -1,3 +1,4 @@
 fusion/__pycache__/
 data-logger*
 .DS_Store
+__pycache__

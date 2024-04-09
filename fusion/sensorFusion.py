@@ -59,7 +59,7 @@ def equalize_list_lengths(list1, list2):
 ########### FUSION OPTIONS ############
 SF_MAGNETIC_REF = [22371.8, 5180, 41715.1]
 SF_MAGNETIC_DIP = 61.16779
-SENSOR_FREQ = 38.0
+SENSOR_FREQ = 7.0
 
 ########### FUSION ALGORITHM FUNCTIONS ############
 
@@ -86,7 +86,7 @@ def orientationEKF(mag, accel, gyro):
         frequency= SENSOR_FREQ, 
         magnetic_ref = SF_MAGNETIC_REF,
         # g, a, m
-        # noises=[0.1, 0.5, 0.5]
+        noises=[0.001, 0.215, 3.45]
     )
     return orientation.Q
 
@@ -97,7 +97,7 @@ def orientationFourati(mag, accel, gyro):
         mag=mag, 
         frequency= SENSOR_FREQ, 
         magnetic_dip= SF_MAGNETIC_DIP,
-        gain=0.01,
+        gain=0.5,
     )
     return orientation.Q
 
@@ -107,7 +107,8 @@ def orientationMadgwick(mag, accel, gyro):
         acc=accel, 
         mag=mag, 
         frequency= SENSOR_FREQ,
-        # gain=0.01,
+        gain_imu=0.05,
+        gain_mag=0.0,
     )
     return orientation.Q
 
@@ -117,7 +118,8 @@ def orientationMahony(mag, accel, gyro):
         acc=accel, 
         mag=mag, 
         frequency= SENSOR_FREQ,
-        k_i=0.2,
+        k_P = 0.001,
+        k_I=0.2,
     )
     return orientation.Q
 
@@ -130,14 +132,14 @@ def orientationROLEQ(mag, accel, gyro):
     )
     return orientation.Q
 
-def orientationSAAM(mag, accel, gyro):
+def orientationSAAM(mag, accel):
     orientation = ahrs.filters.SAAM(
         acc=accel, 
         mag=mag, 
     )
     return orientation.Q
 
-def orientationDavenport(mag, accel, gyro):
+def orientationDavenport(mag, accel):
     orientation = ahrs.filters.Davenport( 
         acc=accel, 
         mag=mag,
@@ -146,23 +148,23 @@ def orientationDavenport(mag, accel, gyro):
     )
     return orientation.Q
 
-def orientationFAMC(mag, accel, gyro):
+def orientationFAMC(mag, accel):
     orientation = ahrs.filters.FAMC(
         acc=accel, 
         mag=mag, 
     )
     return orientation.Q
 
-def orientationFLAE(mag, accel, gyro):
+def orientationFLAE(mag, accel):
     orientation = ahrs.filters.FLAE(
         acc=accel, 
         mag=mag,
         magnetic_dip= SF_MAGNETIC_DIP,
-        weights=[1, 0.0], 
+        weights=[0.2, 0.8], 
     )
     return orientation.Q
 
-def orientationFQA(mag, accel, gyro):
+def orientationFQA(mag, accel):
     orientation = ahrs.filters.FQA(
         acc=accel, 
         mag=mag,
@@ -170,7 +172,7 @@ def orientationFQA(mag, accel, gyro):
     )
     return orientation.Q
 
-def orientationOLEQ(mag, accel, gyro):
+def orientationOLEQ(mag, accel):
     orientation = ahrs.filters.OLEQ(
         acc=accel, 
         mag=mag,
@@ -178,7 +180,7 @@ def orientationOLEQ(mag, accel, gyro):
     )
     return orientation.Q
 
-def orientationQUEST(mag, accel, gyro):
+def orientationQUEST(mag, accel):
     orientation = ahrs.filters.QUEST(
         acc=accel, 
         mag=mag,
@@ -186,7 +188,7 @@ def orientationQUEST(mag, accel, gyro):
     )
     return orientation.Q
 
-def oreintationTilt(mag, accel, gyro):
+def oreintationTilt(mag, accel):
     orientation = ahrs.filters.Tilt(
         acc=accel, 
         mag=mag, 
