@@ -258,7 +258,7 @@ def calculateHeading(accel_data, gyro_data, mag_data, gnss_initial_heading):
 if __name__ == "__main__":
     # Load data from a csv
     dir_path = '/Users/rogerberman/Desktop/YawFusionDrives'
-    drive = 'drive3'
+    drive = 'drive1'
     gnss_path = os.path.join(dir_path, drive, f'{drive}_gnss.csv')
     imu_path = os.path.join(dir_path, drive, f'{drive}_imu.csv')
     mag_path = os.path.join(dir_path, drive, f'{drive}_mag.csv')
@@ -303,14 +303,19 @@ if __name__ == "__main__":
 
     # Adjust the fused heading to match the GNSS heading
     # heading_diff = heading[0] - fused_heading[0]
-    # fused_heading = [heading_val + heading_diff for heading_val in fused_heading]
 
-    plot_signal_over_time(gnss_time, roll, 'Pitch')
+    heading_diff = 190 # drive1 offset
+    # heading_diff = 100 # drive2 offset
+    # heading_diff = 30 # drive3 offset
+    fused_heading = [heading_val + heading_diff for heading_val in fused_heading]
+
+    # plot_signal_over_time(gnss_time, roll, 'Pitch')
     # gnss_angular_changes = calculate_angular_change(heading, gnss_time)
     # print(len(gnss_angular_changes), len(gnss_time))
-    # plot_signals_over_time(gnss_time[100:], heading[100:], fused_heading[100:], 'GNSS Heading', 'Fused Heading')
+    plot_path = os.path.join(dir_path, drive, f'EKF_plot_testing_{heading_diff}.png')
+    plot_signals_over_time(gnss_time, heading, fused_heading, 'GNSS Heading', 'Fused Heading', plot_path)
 
     print("Creating map...")
-    map_path = os.path.join(dir_path, drive, 'map_testing.html')
+    map_path = os.path.join(dir_path, drive, f'EKF_map_testing_{heading_diff}.html')
     create_map(latitude, longitude, fused_heading, map_path, 3)
     print("Map created successfully!")
