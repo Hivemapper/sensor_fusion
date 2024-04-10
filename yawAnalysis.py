@@ -6,6 +6,10 @@ from datetime import datetime, timezone
 
 from plottingCode import plot_signal_over_time, plot_signals_over_time, create_map
 import fusion.sensorFusion as sensorFusion
+from ahrs.common.orientation import rpy2q, q2euler, q2rpy
+import ahrs
+
+from scipy.spatial.transform import Rotation as R
 
 # import fusion
 
@@ -231,20 +235,30 @@ def calculate_angular_change(headings, times):
     return angular_changes
 
 
-def calculateHeading(accel_data, gyro_data, mag_data):
+def calculateHeading(accel_data, gyro_data, mag_data, gnss_initial_heading):
     # ensure same number of samples
     if not len(accel_data) == len(mag_data):
         raise ValueError("Both lists must equal size.")
     
+    # print(gnss_initial_heading)
+
+    # q = ahrs.Quaternion()
+    # q = q.from_angles(numpy.array([math.radians(gnss_initial_heading),0.0, 0.0]))     # roll, pitch, yaw in radians
+    # full_q = ahrs.Quaternion(q)
+    # print(math.degrees(full_q.to_angles()[0]))
+
     # quats = sensorFusion.orientationFLAE(mag_data, accel_data)
     quats = sensorFusion.orientationEKF(mag_data, accel_data, gyro_data)
     euler_list = sensorFusion.convertToEuler(quats)
-    return [euler[2] for euler in euler_list]
+    heading = [euler[2] for euler in euler_list]
+    pitch = [euler[1] for euler in euler_list]
+    roll = [euler[0] for euler in euler_list]
+    return heading, pitch, roll
     
 if __name__ == "__main__":
     # Load data from a csv
     dir_path = '/Users/rogerberman/Desktop/YawFusionDrives'
-    drive = 'drive1'
+    drive = 'drive3'
     gnss_path = os.path.join(dir_path, drive, f'{drive}_gnss.csv')
     imu_path = os.path.join(dir_path, drive, f'{drive}_imu.csv')
     mag_path = os.path.join(dir_path, drive, f'{drive}_mag.csv')
@@ -285,16 +299,16 @@ if __name__ == "__main__":
     gyro_bundle = numpy.array(list(zip(gyro_x_down, gyro_y_down, gyro_z_down)))
     mag_bundle = numpy.array(list(zip(mag_x_down, mag_y_down, mag_z_down)))
     print("Calculating heading...")
-    fused_heading = calculateHeading(acc_bundle, gyro_bundle, mag_bundle)
+    fused_heading, pitch, roll = calculateHeading(acc_bundle, gyro_bundle, mag_bundle, heading[0])
 
     # Adjust the fused heading to match the GNSS heading
-    heading_diff = heading[0] - fused_heading[0]
-    fused_heading = [heading_val + heading_diff for heading_val in fused_heading]
+    # heading_diff = heading[0] - fused_heading[0]
+    # fused_heading = [heading_val + heading_diff for heading_val in fused_heading]
 
-    # plot_signal_over_time(gnss_time, acc_z_down, 'Accel Z')
+    plot_signal_over_time(gnss_time, roll, 'Pitch')
     # gnss_angular_changes = calculate_angular_change(heading, gnss_time)
     # print(len(gnss_angular_changes), len(gnss_time))
-    plot_signals_over_time(gnss_time, heading, fused_heading, 'GNSS Heading', 'Fused Heading')
+    # plot_signals_over_time(gnss_time[100:], heading[100:], fused_heading[100:], 'GNSS Heading', 'Fused Heading')
 
     print("Creating map...")
     map_path = os.path.join(dir_path, drive, 'map_testing.html')

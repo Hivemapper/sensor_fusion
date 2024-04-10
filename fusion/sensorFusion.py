@@ -86,7 +86,8 @@ def orientationEKF(mag, accel, gyro):
         frequency= SENSOR_FREQ, 
         magnetic_ref = SF_MAGNETIC_REF,
         # g, a, m
-        noises=[0.001, 0.215, 3.45]
+        noises=[0.001, 0.215, 3.45],
+        # q0=q0,
     )
     return orientation.Q
 
