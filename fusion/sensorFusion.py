@@ -78,16 +78,20 @@ def orientationComplementary(mag, accel, gyro):
     )
     return orientation.Q
 
-def orientationEKF(mag, accel, gyro):
+def orientationEKF(mag, accel, gyro, q0):
     orientation = ahrs.filters.EKF(
         gyr=gyro, 
         acc=accel, 
         mag=mag, 
         frequency= SENSOR_FREQ, 
-        # magnetic_ref = SF_MAGNETIC_REF,
+        magnetic_ref = SF_MAGNETIC_REF,
+        # magnetic_ref= SF_MAGNETIC_DIP,
         # g, a, m
-        noises=[0.001, 0.215, 3.45],
-        # q0=q0,
+        noises=[0.001, 0.175, 0.9],
+        # noises=[0.0005, 0.21, 2.9],
+        # noises=[0.01, 0.85, 5],
+        # frame='NED',
+        q0=q0,
     )
     return orientation.Q
 

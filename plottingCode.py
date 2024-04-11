@@ -2,13 +2,14 @@ import matplotlib.pyplot as plt
 import folium
 import math
 
-def plot_signal_over_time(seconds, signal_values, signal_label='Signal'):
+def plot_signal_over_time(seconds, signal_values, signal_label='Signal', highlight_indices=[]):
     """
     Plots signal values over time, where time is represented in seconds.
     Parameters:
     - seconds: A list of timestamps in seconds.
     - signal_values: A list of signal values corresponding to each timestamp.
     - signal_label: A string label for the signal being plotted (e.g., 'Temperature', 'Speed').
+    - highlight_indices: A list of indices to highlight on the plot.
     """
     # Ensure the lists are of the same length
     if len(seconds) != len(signal_values):
@@ -16,15 +17,22 @@ def plot_signal_over_time(seconds, signal_values, signal_label='Signal'):
         return
     
     plt.figure(figsize=(10, 6))  # Adjust figure size as desired
-    plt.plot(seconds, signal_values, linestyle='-', color='b')
+    plt.plot(seconds, signal_values, linestyle='-', color='b', label=signal_label)
+
+    # Highlight the specified indices
+    if highlight_indices:
+        # Extract the highlighted seconds and values using list comprehension
+        highlighted_seconds = [seconds[i] for i in highlight_indices]
+        highlighted_values = [signal_values[i] for i in highlight_indices]
+        plt.scatter(highlighted_seconds, highlighted_values, color='r', s=2, zorder=5)
 
     # Formatting the plot
     plt.title(f'{signal_label} Over Time')
     plt.xlabel('Time (seconds)')
     plt.ylabel(signal_label)
-
+    plt.legend()
     plt.grid(True)
-    plt.show()
+    plt.show(block=False)
 
 def plot_signals_over_time(seconds, signal1_values, signal2_values, signal1_label='Signal 1', signal2_label='Signal 2', save_path=None):
     """
@@ -60,7 +68,7 @@ def plot_signals_over_time(seconds, signal1_values, signal2_values, signal1_labe
         plt.savefig(save_path)  # Save the figure to the file path provided
         plt.close()  # Close the plot figure to prevent it from displaying in the notebook/output
     else:
-        plt.show()  # Display the plot if no file path is provided
+        plt.show(block=False)  # Display the plot if no file path is provided
 
 
 def create_map(latitude, longitude, heading, map_filename, plot_every=1):

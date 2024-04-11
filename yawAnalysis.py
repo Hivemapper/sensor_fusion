@@ -1,15 +1,15 @@
 import math
 import csv
 import os
-import numpy
+import numpy as np
 from datetime import datetime, timezone
 
 from plottingCode import plot_signal_over_time, plot_signals_over_time, create_map
 import fusion.sensorFusion as sensorFusion
-from ahrs.common.orientation import rpy2q, q2euler, q2rpy
+from ellipsoid_fit import data_regularize, ellipsoid_fit
 import ahrs
 
-from scipy.spatial.transform import Rotation as R
+import matplotlib.pyplot as plt
 
 # import fusion
 
@@ -202,16 +202,16 @@ def calculate_rolling_average(data, window_size):
     - Numpy array of rolling average values, same length as input data.
     """
     if window_size <= 1:
-        return numpy.array(data)
+        return np.array(data)
 
     # Determine the amount of padding
     pad_size = window_size // 2
     # For even window sizes, reduce the padding by 1 at the start
     start_pad_size = pad_size if window_size % 2 != 0 else pad_size - 1
     # Pad the beginning with the first element and the end with the last element
-    padded_data = numpy.pad(data, (start_pad_size, pad_size), 'edge')
+    padded_data = np.pad(data, (start_pad_size, pad_size), 'edge')
     # Calculate the rolling average using 'valid' mode
-    rolling_avg = numpy.convolve(padded_data, numpy.ones(window_size) / window_size, mode='valid')
+    rolling_avg = np.convolve(padded_data, np.ones(window_size) / window_size, mode='valid')
 
     return rolling_avg
 
@@ -234,21 +234,35 @@ def calculate_angular_change(headings, times):
     
     return angular_changes
 
+def calibrate_mag(data):
+    # Compute calibration center and transformation matrix
+    data_regularized = data_regularize(data, divs=8)
+    center, evecs, radii, v = ellipsoid_fit(data_regularized)
+
+    a, b, c = radii
+    r = np.abs(a * b * c) ** (1. / 3.)
+    D = np.array([[r/a, 0., 0.], [0., r/b, 0.], [0., 0., r/c]])
+    #http://www.cs.brandeis.edu/~cs155/Lecture_07_6.pdf
+    #affine transformation from ellipsoid to sphere (translation excluded)
+    TR = evecs.dot(D).dot(evecs.T)
+
+    # Subtract the center offset from each data point in the dataset
+    # and apply the calibration transformation
+    calibrated_data = np.array([np.dot(TR, data_point - center) for data_point in data])
+
+    return calibrated_data
 
 def calculateHeading(accel_data, gyro_data, mag_data, gnss_initial_heading):
     # ensure same number of samples
     if not len(accel_data) == len(mag_data):
         raise ValueError("Both lists must equal size.")
-    
-    # print(gnss_initial_heading)
 
-    # q = ahrs.Quaternion()
-    # q = q.from_angles(numpy.array([math.radians(gnss_initial_heading),0.0, 0.0]))     # roll, pitch, yaw in radians
-    # full_q = ahrs.Quaternion(q)
-    # print(math.degrees(full_q.to_angles()[0]))
+    q = ahrs.Quaternion()
+    # yaw, pitch, roll in radians
+    q = q.from_angles(np.array([math.radians(gnss_initial_heading),0.0, 0.0]))
 
     # quats = sensorFusion.orientationFLAE(mag_data, accel_data)
-    quats = sensorFusion.orientationEKF(mag_data, accel_data, gyro_data)
+    quats = sensorFusion.orientationEKF(mag_data, accel_data, gyro_data, q)
     euler_list = sensorFusion.convertToEuler(quats)
     heading = [euler[2] for euler in euler_list]
     pitch = [euler[1] for euler in euler_list]
@@ -258,7 +272,7 @@ def calculateHeading(accel_data, gyro_data, mag_data, gnss_initial_heading):
 if __name__ == "__main__":
     # Load data from a csv
     dir_path = '/Users/rogerberman/Desktop/YawFusionDrives'
-    drive = 'drive1'
+    drive = 'drive3'
     gnss_path = os.path.join(dir_path, drive, f'{drive}_gnss.csv')
     imu_path = os.path.join(dir_path, drive, f'{drive}_imu.csv')
     mag_path = os.path.join(dir_path, drive, f'{drive}_mag.csv')
@@ -275,47 +289,77 @@ if __name__ == "__main__":
     print("Data extracted successfully!")
     
     print("Downsampling data...")
-    acc_x_down = numpy.interp(gnss_time, imu_time, acc_x)
-    acc_y_down = numpy.interp(gnss_time, imu_time, acc_y)
-    acc_z_down = numpy.interp(gnss_time, imu_time, acc_z)
-    gyro_x_down = numpy.interp(gnss_time, imu_time, gyro_x)
-    gyro_y_down = numpy.interp(gnss_time, imu_time, gyro_y)
-    gyro_z_down = numpy.interp(gnss_time, imu_time, gyro_z)
-    mag_x_down = numpy.interp(gnss_time, mag_time, mag_x)
-    mag_y_down = numpy.interp(gnss_time, mag_time, mag_y)
-    mag_z_down = numpy.interp(gnss_time, mag_time, mag_z)
+    acc_x_down = np.interp(gnss_time, imu_time, acc_x)
+    acc_y_down = np.interp(gnss_time, imu_time, acc_y)
+    acc_z_down = np.interp(gnss_time, imu_time, acc_z)
+    gyro_x_down = np.interp(gnss_time, imu_time, gyro_x)
+    gyro_y_down = np.interp(gnss_time, imu_time, gyro_y)
+    gyro_z_down = np.interp(gnss_time, imu_time, gyro_z)
+    mag_x_down = np.interp(gnss_time, mag_time, mag_x)
+    mag_y_down = np.interp(gnss_time, mag_time, mag_y)
+    mag_z_down = np.interp(gnss_time, mag_time, mag_z)
     print("Data downsampled successfully!")
-    # OFFSET Removal 
-    gyro_z_down = [g-0.025 for g in gyro_z_down]
-    gyro_y_down = [g+0.015 for g in gyro_y_down]
-    gyro_x_down = [g+0.038 for g in gyro_x_down]
 
-    acc_x_down = [a-0.155 for a in acc_x_down]
-    acc_y_down = [a-0.005 for a in acc_y_down]
-    acc_z_down = [a-0.009 for a in acc_z_down]
+    print("Calculate additional OFFSETS")
+    # find the indices where the speed is zero
+    zero_speed_indices = [i for i, speed_val in enumerate(speed) if speed_val < 0.1]
+    # Grab all indexes where the speed is zero for accel and gyro
+    acc_x_down_zero_speed = [acc_x_down[i] for i in zero_speed_indices]
+    acc_y_down_zero_speed = [acc_y_down[i] for i in zero_speed_indices]
+    acc_z_down_zero_speed = [acc_z_down[i] for i in zero_speed_indices]
+    gyro_x_down_zero_speed = [gyro_x_down[i] for i in zero_speed_indices]
+    gyro_y_down_zero_speed = [gyro_y_down[i] for i in zero_speed_indices]
+    gyro_z_down_zero_speed = [gyro_z_down[i] for i in zero_speed_indices]
 
+    # Calculate the average of the zero speed values
+    acc_x_down_zero_speed_avg = np.mean(acc_x_down_zero_speed)
+    acc_y_down_zero_speed_avg = np.mean(acc_y_down_zero_speed)
+    acc_z_down_zero_speed_avg = np.mean(acc_z_down_zero_speed) - 1  # handle the fact this needs to be 1 when at 0 velocity not 0
+    gyro_x_down_zero_speed_avg = np.mean(gyro_x_down_zero_speed)
+    gyro_y_down_zero_speed_avg = np.mean(gyro_y_down_zero_speed)
+    gyro_z_down_zero_speed_avg = np.mean(gyro_z_down_zero_speed)
 
-    acc_bundle = numpy.array(list(zip(acc_x_down, acc_y_down, acc_z_down)))
-    gyro_bundle = numpy.array(list(zip(gyro_x_down, gyro_y_down, gyro_z_down)))
-    mag_bundle = numpy.array(list(zip(mag_x_down, mag_y_down, mag_z_down)))
+    # Apply the offsets to the data
+    acc_x_down = [a - acc_x_down_zero_speed_avg for a in acc_x_down]
+    acc_y_down = [a - acc_y_down_zero_speed_avg for a in acc_y_down]
+    acc_z_down = [a - acc_z_down_zero_speed_avg for a in acc_z_down]
+    gyro_x_down = [g - gyro_x_down_zero_speed_avg for g in gyro_x_down]
+    gyro_y_down = [g - gyro_y_down_zero_speed_avg for g in gyro_y_down]
+    gyro_z_down = [g - gyro_z_down_zero_speed_avg for g in gyro_z_down]
+
+    # print all offsets in one line
+    print(f"Accel offsets: {acc_x_down_zero_speed_avg}, {acc_y_down_zero_speed_avg}, {acc_z_down_zero_speed_avg}")
+    print(f"Gyro offsets: {gyro_x_down_zero_speed_avg}, {gyro_y_down_zero_speed_avg}, {gyro_z_down_zero_speed_avg}")
+
+    print("Offsets calculated successfully!")
+
+    print("Calibrating magnetometer...")
+    mag_bundle = np.array(list(zip(mag_x_down, mag_y_down, mag_z_down)))
+    calibrated_mag_bundle = calibrate_mag(mag_bundle)
+    print("Magnetometer calibrated successfully!")
+
+    acc_bundle = np.array(list(zip(acc_x_down, acc_y_down, acc_z_down)))
+    gyro_bundle = np.array(list(zip(gyro_x_down, gyro_y_down, gyro_z_down)))
     print("Calculating heading...")
-    fused_heading, pitch, roll = calculateHeading(acc_bundle, gyro_bundle, mag_bundle, heading[0])
+    fused_heading, pitch, roll = calculateHeading(acc_bundle, gyro_bundle, calibrated_mag_bundle, heading[0])
 
-    # Adjust the fused heading to match the GNSS heading
-    # heading_diff = heading[0] - fused_heading[0]
+    # Mag Straight Heading
+    # mag_headings = [(math.atan2(y, x) * 180 / math.pi) % 360 for x, y in zip(mag_x_down, mag_y_down)]
 
-    heading_diff = 190 # drive1 offset
-    # heading_diff = 100 # drive2 offset
-    # heading_diff = 30 # drive3 offset
-    fused_heading = [heading_val + heading_diff for heading_val in fused_heading]
+    # used to translate the fused heading to the correct range
+    fused_heading = [heading_val + 360 if heading_val < 0 else heading_val for heading_val in fused_heading]
 
-    # plot_signal_over_time(gnss_time, roll, 'Pitch')
+    
+    fused_heading = [heading_val - 180 for heading_val in fused_heading]
+
+    # plot_signal_over_time(gnss_time, mag_headings, 'Mag Heading')
     # gnss_angular_changes = calculate_angular_change(heading, gnss_time)
-    # print(len(gnss_angular_changes), len(gnss_time))
-    plot_path = os.path.join(dir_path, drive, f'EKF_plot_testing_{heading_diff}.png')
-    plot_signals_over_time(gnss_time, heading, fused_heading, 'GNSS Heading', 'Fused Heading', plot_path)
+
+    # plot_path = os.path.join(dir_path, drive, f'EKF_plot_testing_{heading_diff}.png')
+    plot_signals_over_time(gnss_time, heading, fused_heading, 'GNSS Heading', 'Fused Heading', None)
+    plt.show()
 
     print("Creating map...")
-    map_path = os.path.join(dir_path, drive, f'EKF_map_testing_{heading_diff}.html')
+    map_path = os.path.join(dir_path, drive, f'EKF_map_testing.html')
     create_map(latitude, longitude, fused_heading, map_path, 3)
     print("Map created successfully!")
