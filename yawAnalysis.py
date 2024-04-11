@@ -349,17 +349,26 @@ if __name__ == "__main__":
     # used to translate the fused heading to the correct range
     fused_heading = [heading_val + 360 if heading_val < 0 else heading_val for heading_val in fused_heading]
 
-    
+    # used when the heading is off by 180 degrees
     fused_heading = [heading_val - 180 for heading_val in fused_heading]
 
-    # plot_signal_over_time(gnss_time, mag_headings, 'Mag Heading')
+    # Calculate the difference between the GNSS heading and the fused heading 
+    heading_diff = []
+    for i in range(len(heading_accuracy)):
+        if heading_accuracy[i] < 3.0:
+            heading_diff.append((heading[i] - fused_heading[i] + 180) % 360 - 180)
+
+    heading_diff_mean = np.mean(heading_diff)
+    print(f"Mean heading difference: {heading_diff_mean}")
+
+    # plot_signal_over_time(gnss_time, heading_diff, 'Heading Diff')
     # gnss_angular_changes = calculate_angular_change(heading, gnss_time)
 
     # plot_path = os.path.join(dir_path, drive, f'EKF_plot_testing_{heading_diff}.png')
-    plot_signals_over_time(gnss_time, heading, fused_heading, 'GNSS Heading', 'Fused Heading', None)
+    # plot_signals_over_time(gnss_time, heading_diff, heading_accuracy, 'GNSS Heading', 'Heading Accuracy', None)
     plt.show()
 
-    print("Creating map...")
-    map_path = os.path.join(dir_path, drive, f'EKF_map_testing.html')
-    create_map(latitude, longitude, fused_heading, map_path, 3)
-    print("Map created successfully!")
+    # print("Creating map...")
+    # map_path = os.path.join(dir_path, drive, f'{drive}_EKF_map_testing.html')
+    # create_map(latitude, longitude, fused_heading, map_path, 3)
+    # print("Map created successfully!")
