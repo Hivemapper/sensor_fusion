@@ -5,13 +5,16 @@ from .utils import calculateAttributesAverage, extractAndSmoothImuData, extractA
 from .ellipsoid_fit import calibrate_mag
 
 TEN_MINUTES = 1000 * 60 * 10 # in millisecond epoch time
+QUARTER_SECOND = 250 # in millisecond epoch time
 HALF_SECOND = 500 # in millisecond epoch time
 ONE_SECOND = 1000 # in millisecond epoch time
+THIRTY_SECONDS = 1000 * 30 # in millisecond epoch time
 
 ACCEL_Z_UPSIDE_DOWN_THRESHOLD = -0.1
 GNSS_LOW_SPEED_THRESHOLD = 0.1
 HEADING_DIFF_MAGNETOMETER_FLIP_THRESHOLD = 100 #in degreed
 GNSS_HEADING_ACCURACY_THRESHOLD = 3.0
+GNSS_DISTANCE_THRESHOLD = 1.5 # meters
 
 def getEulerAngle(desiredTime: int):
     """ 
@@ -75,11 +78,23 @@ def getGNSSHeading(time: int = None):
 
     # get data from the database
     gnss_data = getGnssData(time)
-    gnss_ave = calculateAttributesAverage(gnss_data)
-    if gnss_ave['heading_accuracy'] < GNSS_HEADING_ACCURACY_THRESHOLD:
-        return gnss_ave['heading']
+    current_heading = gnss_data[0].heading
+    current_heading_accuracy = gnss_data[0].headingAccuracy
+    if current_heading_accuracy < GNSS_HEADING_ACCURACY_THRESHOLD:
+        return current_heading
     else:
-        return None
+        older_gnss_data = getGnssData(time-QUARTER_SECOND,THIRTY_SECONDS)
+        for data in older_gnss_data:
+            #TODO: Fix to calculate distance correctly when dealing with lat/long
+            x1 = gnss_data[0].latitude
+            y1 = gnss_data[0].longitude
+            x2 = data.latitude
+            y2 = data.longitude
+            distance = np.sqrt((x2-x1)**2 + (y2-y1)**2)
+            if (data.headingAccuracy < GNSS_HEADING_ACCURACY_THRESHOLD and
+                distance < GNSS_DISTANCE_THRESHOLD):
+                return data.heading
+    return None
 
 def getDashcamToVehicleHeadingOffset(time: int = None, pastRange: int= None):
     """
