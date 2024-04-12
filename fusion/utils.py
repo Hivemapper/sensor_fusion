@@ -96,6 +96,9 @@ def calculateAttributesAverage(data_list):
     if not data_list:
         return None
     
+    if len(data_list) == 1:
+        return data_list[0].__dict__
+    
     num_instances = len(data_list)
     sum_values = {}
     attribute_names = [attr for attr in dir(data_list[0]) if not attr.startswith("__") and not callable(getattr(data_list[0], attr))]

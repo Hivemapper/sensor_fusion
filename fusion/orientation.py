@@ -1,10 +1,51 @@
 import numpy as np
-from .sensorFusion import calculateHeading
+from .sensorFusion import calculateHeading, equalize_list_lengths, convertToEuler, averageEulerAngles, orientationFLAE
 from .sqliteinterface import getImuData, getMagnetometerData, getGnssData, ASC
 from .utils import calculateAttributesAverage, extractAndSmoothImuData, extractAndSmoothMagData, extractGNSSData
 from .ellipsoid_fit import calibrate_mag
 
 TEN_MINUTES = 1000 * 60 * 10 # in millisecond epoch time
+HALF_SECOND = 500 # in millisecond epoch time
+ONE_SECOND = 1000 # in millisecond epoch time
+
+ACCEL_Z_UPSIDE_DOWN_THRESHOLD = -0.1
+GNSS_LOW_SPEED_THRESHOLD = 0.1
+HEADING_DIFF_MAGNETOMETER_FLIP_THRESHOLD = 100 #in degreed
+GNSS_HEADING_ACCURACY_THRESHOLD = 3.0
+
+def getEulerAngle(desiredTime: int):
+    """ 
+    Returns the average Euler angles (roll, pitch, yaw) in degrees for the given epoch millisecond times.
+    Args:
+        desiredTime (int): The epoch millisecond time to query for sensor data.
+    Returns:
+        Tuple[float, float, float]: The average Euler angles (roll, pitch, yaw) in degrees.
+    """
+    # get data from the database
+    imu_data = getImuData(desiredTime)
+    mag_data = getMagnetometerData(desiredTime)
+
+    # Ensure same number of samples
+    imu_data, mag_data = equalize_list_lengths(imu_data, mag_data)
+
+    # extract the data from the objects
+    accel_list = []
+    gyro_list = []
+    for data in imu_data:
+        accel_list.append(data.getAccel())
+        gyro_list.append(data.getGyro())
+
+    accel = np.array(accel_list)
+    gyro = np.array(gyro_list)    
+    mag = np.array([data.getMag() for data in mag_data])
+
+    # get the orientation
+    quats = orientationFLAE(mag, accel, gyro)
+    euler_list = convertToEuler(quats)
+    avg_euler = averageEulerAngles(euler_list)
+    # Modification for FLAE
+    avg_euler = [avg_euler[0], avg_euler[1]*-1, avg_euler[2]]
+    return avg_euler
 
 def isUpsideDown(time: int = None):
     """ 
@@ -14,13 +55,31 @@ def isUpsideDown(time: int = None):
     """
     # if no time given get data for ~now
     if time is None:
-        time = int(time.time()*1000) - 500
+        time = int(time.time()*ONE_SECOND) - HALF_SECOND
 
     # get data from the database
     imu_data = getImuData(time)
     imu_ave = calculateAttributesAverage(imu_data)
     # check if the device is upside down
-    return imu_ave['az'] < -0.1
+    return imu_ave['az'] < ACCEL_Z_UPSIDE_DOWN_THRESHOLD
+
+def getGNSSHeading(time: int = None):
+    """
+    Returns the GNSS heading in degrees.
+    Returns:
+        float: The GNSS heading in degrees.
+    """
+    # if no time given get data for ~now
+    if time is None:
+        time = int(time.time()*ONE_SECOND) - HALF_SECOND
+
+    # get data from the database
+    gnss_data = getGnssData(time)
+    gnss_ave = calculateAttributesAverage(gnss_data)
+    if gnss_ave['heading_accuracy'] < GNSS_HEADING_ACCURACY_THRESHOLD:
+        return gnss_ave['heading']
+    else:
+        return None
 
 def getDashcamToVehicleHeadingOffset(time: int = None, pastRange: int= None):
     """
@@ -30,7 +89,7 @@ def getDashcamToVehicleHeadingOffset(time: int = None, pastRange: int= None):
     """
     # if no time given get data for ~now
     if time is None:
-        time = int(time.time()*1000) - 500
+        time = int(time.time()*ONE_SECOND) - HALF_SECOND
 
     # if no pastRange given get data for 7 minutes
     if pastRange is None:
@@ -58,7 +117,7 @@ def getDashcamToVehicleHeadingOffset(time: int = None, pastRange: int= None):
     mag_z_down = np.interp(gnss_time, mag_time, mag_z)
 
     # Calculate bias for accel and gyro
-    zero_speed_indices = [i for i, speed_val in enumerate(speed) if speed_val < 0.1]
+    zero_speed_indices = [i for i, speed_val in enumerate(speed) if speed_val < GNSS_LOW_SPEED_THRESHOLD]
 
     acc_x_down_zero_speed, acc_y_down_zero_speed, acc_z_down_zero_speed = [], [], []
     gyro_x_down_zero_speed, gyro_y_down_zero_speed, gyro_z_down_zero_speed = [], [], []
@@ -98,17 +157,17 @@ def getDashcamToVehicleHeadingOffset(time: int = None, pastRange: int= None):
 
     fused_heading, _, _ = calculateHeading(acc_bundle, gyro_bundle, calibrated_mag_bundle, heading[0])
 
-    # used to translate the fused heading to the correct range
+    # used to translate the fused heading from -180:180 to the correct range 0:360
     fused_heading = [heading_val + 360 if heading_val < 0 else heading_val for heading_val in fused_heading]
 
     # used when the heading is off by 180 degrees
     # check last heading diff to make decision
-    if abs(heading[-1] - fused_heading[-1]) > 100:
+    if abs(heading[-1] - fused_heading[-1]) > HEADING_DIFF_MAGNETOMETER_FLIP_THRESHOLD:
         fused_heading = [heading_val - 180 for heading_val in fused_heading]
 
     heading_diff = []
     for i in range(len(headingAccuracy)):
-        if headingAccuracy[i] < 3.0:
+        if headingAccuracy[i] < GNSS_HEADING_ACCURACY_THRESHOLD:
             heading_diff.append((heading[i] - fused_heading[i] + 180) % 360 - 180)
 
     heading_diff_mean = np.mean(heading_diff)
