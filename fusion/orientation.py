@@ -60,12 +60,15 @@ def getDashcamToVehicleHeadingOffset(time: int = None, pastRange: int= None):
     # Calculate bias for accel and gyro
     zero_speed_indices = [i for i, speed_val in enumerate(speed) if speed_val < 0.1]
 
-    acc_x_down_zero_speed = [acc_x_down[i] for i in zero_speed_indices]
-    acc_y_down_zero_speed = [acc_y_down[i] for i in zero_speed_indices]
-    acc_z_down_zero_speed = [acc_z_down[i] for i in zero_speed_indices]
-    gyro_x_down_zero_speed = [gyro_x_down[i] for i in zero_speed_indices]
-    gyro_y_down_zero_speed = [gyro_y_down[i] for i in zero_speed_indices]
-    gyro_z_down_zero_speed = [gyro_z_down[i] for i in zero_speed_indices]
+    acc_x_down_zero_speed, acc_y_down_zero_speed, acc_z_down_zero_speed = [], [], []
+    gyro_x_down_zero_speed, gyro_y_down_zero_speed, gyro_z_down_zero_speed = [], [], []
+    for i in zero_speed_indices:
+        acc_x_down_zero_speed.append(acc_x_down[i])
+        acc_y_down_zero_speed.append(acc_y_down[i])
+        acc_z_down_zero_speed.append(acc_z_down[i])
+        gyro_x_down_zero_speed.append(gyro_x_down[i])
+        gyro_y_down_zero_speed.append(gyro_y_down[i])
+        gyro_z_down_zero_speed.append(gyro_z_down[i])
 
     # Calculate the average of the zero speed values
     acc_x_down_zero_speed_avg = np.mean(acc_x_down_zero_speed)
