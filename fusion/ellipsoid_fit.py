@@ -2,7 +2,62 @@ import numpy as np
 import math 
 
 
+def calibrate_mag(data):
+    """
+    Calibrates magnetometer data to correct for sensor distortions and interference.
+
+    This function computes a calibration center and transformation matrix to convert
+    raw magnetometer data into calibrated data. The calibration involves fitting the raw data to
+    an ellipsoid and then transforming this ellipsoid into a sphere, effectively normalizing
+    the data and correcting for sensor distortions.
+
+    Parameters:
+    - data (np.array): The raw magnetometer data as a numpy array of shape (N, 3),
+                       where N is the number of measurements, and each measurement
+                       consists of X, Y, and Z components of the magnetic field.
+
+    Returns:
+    - calibrated_data (np.array): Calibrated magnetometer data as a numpy array of
+                                  the same shape as the input data, where sensor distortions
+    """
+    data_regularized = data_regularize(data, divs=8)
+    center, evecs, radii, v = ellipsoid_fit(data_regularized)
+
+    a, b, c = radii
+    r = np.abs(a * b * c) ** (1. / 3.)
+    D = np.array([[r/a, 0., 0.], [0., r/b, 0.], [0., 0., r/c]])
+    #http://www.cs.brandeis.edu/~cs155/Lecture_07_6.pdf
+    #affine transformation from ellipsoid to sphere (translation excluded)
+    TR = evecs.dot(D).dot(evecs.T)
+
+    # Subtract the center offset from each data point in the dataset
+    # and apply the calibration transformation
+    calibrated_data = np.array([np.dot(TR, data_point - center) for data_point in data])
+
+    return calibrated_data
+
+
+# Code from: https://github.com/aleksandrbazhin/ellipsoid_fit_python
 def data_regularize(data, type="spherical", divs=10):
+    """
+    Regularizes raw data points by averaging them within specified divisions or sectors.
+
+    This function can operate in either spherical or cubic modes, averaging the data points
+    within spherical sectors or cubic volumes, respectively. This regularization is useful
+    for smoothing the data and reducing the noise before further processing.
+
+    Parameters:
+    - data (np.array): Raw data points as a numpy array of shape (N, 3), where N is the number
+                       of data points.
+    - type (str): The type of regularization to apply. Can be 'spherical' for spherical
+                  sectors or 'cubic' for cubic volumes. Default is 'spherical'.
+    - divs (int): The number of divisions or sectors to use in the regularization process.
+                  For spherical type, it specifies the divisions in one dimension,
+                  and for cubic, it specifies the divisions along each axis. Default is 10.
+
+    Returns:
+    - regularized (np.array): The regularized data points as a numpy array.
+    """
     limits = np.array([
         [min(data[:, 0]), max(data[:, 0])],
         [min(data[:, 1]), max(data[:, 1])],
@@ -72,7 +127,25 @@ def data_regularize(data, type="spherical", divs=10):
 
 # https://github.com/minillinim/ellipsoid
 def ellipsoid_plot(center, radii, rotation, ax, plot_axes=False, cage_color='b', cage_alpha=0.2):
-    """Plot an ellipsoid"""
+    """
+    Plots an ellipsoid based on provided parameters.
+
+    This function uses the ellipsoid's center, radii, and rotation matrix to plot it in 3D space.
+    Optionally, it can also plot the axes of the ellipsoid. This is useful for visualizing the
+    shape and orientation of the ellipsoid, such as the one fitted to magnetometer data.
+
+    Parameters:
+    - center (np.array): The center of the ellipsoid.
+    - radii (np.array): The radii of the ellipsoid along its principal axes.
+    - rotation (np.array): The rotation matrix defining the orientation of the ellipsoid.
+    - ax (matplotlib.axes._subplots.Axes3DSubplot): The matplotlib 3D subplot object where the ellipsoid will be plotted.
+    - plot_axes (bool): Whether to plot the axes of the ellipsoid. Default is False.
+    - cage_color (str): The color of the ellipsoid wireframe. Default is 'b' (blue).
+    - cage_alpha (float): The alpha (transparency) value of the ellipsoid wireframe. Default is 0.2.
+
+    Returns:
+    None
+    """
         
     u = np.linspace(0.0, 2.0 * np.pi, 100)
     v = np.linspace(0.0, np.pi, 100)
@@ -109,6 +182,23 @@ def ellipsoid_plot(center, radii, rotation, ax, plot_axes=False, cage_color='b',
 # http://www.mathworks.com/matlabcentral/fileexchange/24693-ellipsoid-fit
 # for arbitrary axes
 def ellipsoid_fit(X):
+    """
+    Fits an ellipsoid to a set of points in 3D space and calculates its parameters.
+
+    This function computes the optimal ellipsoid that fits a given set of points in 3D space,
+    returning the ellipsoid's center, principal axes, and radii. It uses a least-squares fitting
+    method to determine the ellipsoid parameters.
+
+    Parameters:
+    - X (np.array): The set of points in 3D space as a numpy array of shape (N, 3), where N is the
+                    number of points.
+
+    Returns:
+    - center (np.array): The center of the fitted ellipsoid.
+    - evecs (np.array): The eigenvectors corresponding to the principal axes of the ellipsoid.
+    - radii (np.array): The radii of the ellipsoid along its principal axes.
+    - v (np.array): The raw parameters from the ellipsoid fitting algorithm.
+    """
     x = X[:, 0]
     y = X[:, 1]
     z = X[:, 2]

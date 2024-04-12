@@ -1,6 +1,26 @@
-import numpy
+import numpy as np
 import ahrs
+import math
 
+############ MAIN FUNCTIONS ############
+def calculateHeading(accel_data, gyro_data, mag_data, gnss_initial_heading):
+    # ensure same number of samples
+    if not len(accel_data) == len(mag_data):
+        raise ValueError("Both lists must equal size.")
+
+    q = ahrs.Quaternion()
+    # yaw, pitch, roll in radians
+    q = q.from_angles(np.array([math.radians(gnss_initial_heading),0.0, 0.0]))
+
+    # quats = sensorFusion.orientationFLAE(mag_data, accel_data)
+    quats = orientationEKF(mag_data, accel_data, gyro_data, q)
+    euler_list = convertToEuler(quats)
+    heading, pitch, roll = [], [], []
+    for euler in euler_list:
+        roll.append(euler[0])
+        pitch.append(euler[1])
+        heading.append(euler[2])
+    return heading, pitch, roll
 
 ########### HELPER FUNCTIONS ############
 
@@ -16,7 +36,7 @@ def convertToEuler(values):
     euler_deg_list = []
     for quaternion in quaternion_list:
         euler_rad = quaternion.to_angles()
-        euler_deg = numpy.degrees(euler_rad)
+        euler_deg = np.degrees(euler_rad)
         euler_deg_list.append(euler_deg)
     return euler_deg_list
 
@@ -29,7 +49,7 @@ def averageEulerAngles(euler_deg_list):
     Returns:
         Tuple[float, float, float]: The average Euler angles in degrees.
     """
-    return tuple(numpy.mean(euler_deg_list, axis=0))
+    return tuple(np.mean(euler_deg_list, axis=0))
 
 def equalize_list_lengths(list1, list2):
     """ Equalizes the lengths of two lists by removing elements from the end of the longer list,

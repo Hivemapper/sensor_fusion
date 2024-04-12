@@ -5,13 +5,12 @@ import numpy as np
 from datetime import datetime, timezone
 
 from plottingCode import plot_signal_over_time, plot_signals_over_time, create_map
-import fusion.sensorFusion as sensorFusion
-from ellipsoid_fit import data_regularize, ellipsoid_fit
+from fusion.sensorFusion import calculateHeading
+from fusion.utils import calculateAverageFrequency, calculateRollingAverage
+from fusion.ellipsoid_fit import calibrate_mag
 import ahrs
 
 import matplotlib.pyplot as plt
-
-# import fusion
 
 # Function to convert each value to its appropriate data type
 def convert(value):
@@ -93,17 +92,17 @@ def extractIMUData(data):
         gyro_z.append(math.radians(point['gyro_z']))
         time_data.append(convertTimeToEpoch(point['time']))
 
-    freq = math.floor(calculate_average_frequency(time_data))
+    freq = math.floor(calculateAverageFrequency(time_data))
     print(f"IMU data frequency: {freq} Hz")
     freq_half = freq // 4
 
     # Calculate rolling averages for each data type
-    acc_x = calculate_rolling_average(acc_x, freq_half)
-    acc_y = calculate_rolling_average(acc_y, freq_half)
-    acc_z = calculate_rolling_average(acc_z, freq_half)
-    gyro_x = calculate_rolling_average(gyro_x, freq_half)
-    gyro_y = calculate_rolling_average(gyro_y, freq_half)
-    gyro_z = calculate_rolling_average(gyro_z, freq_half)
+    acc_x = calculateRollingAverage(acc_x, freq_half)
+    acc_y = calculateRollingAverage(acc_y, freq_half)
+    acc_z = calculateRollingAverage(acc_z, freq_half)
+    gyro_x = calculateRollingAverage(gyro_x, freq_half)
+    gyro_y = calculateRollingAverage(gyro_y, freq_half)
+    gyro_z = calculateRollingAverage(gyro_z, freq_half)
 
     return acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, time_data
 
@@ -127,14 +126,14 @@ def extractMagData(data):
         mag_z.append(point['mag_z'])
         time_data.append(convertTimeToEpoch(point['system_time']))
 
-    freq = math.floor(calculate_average_frequency(time_data))
+    freq = math.floor(calculateAverageFrequency(time_data))
     print(f"Magnetometer data frequency: {freq} Hz")
     freq_half = freq // 4
 
     # Calculate rolling averages for each magnetometer component
-    mag_x = calculate_rolling_average(mag_x, freq_half)
-    mag_y = calculate_rolling_average(mag_y, freq_half)
-    mag_z = calculate_rolling_average(mag_z, freq_half)
+    mag_x = calculateRollingAverage(mag_x, freq_half)
+    mag_y = calculateRollingAverage(mag_y, freq_half)
+    mag_z = calculateRollingAverage(mag_z, freq_half)
 
     return mag_x, mag_y, mag_z, time_data
 
@@ -167,112 +166,15 @@ def extractGNSSData(data):
         gdop.append(point['gdop'])
         time_data.append(convertTimeToEpoch(point['system_time']))
 
-    freq = math.floor(calculate_average_frequency(time_data))
+    freq = math.floor(calculateAverageFrequency(time_data))
     print(f"GNSS data frequency: {freq} Hz")
 
     return latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, time_data
-
-def calculate_average_frequency(epoch_times_ms):
-    """
-    Calculates the average frequency of events given a list of epoch times in milliseconds starting from zero.
-    Parameters:
-    - epoch_times_ms: List of epoch times in milliseconds. The list should start at zero and represent successive events.
-    Returns:
-    - float: The average frequency of the events in Hz (events per second).
-    """
-    if len(epoch_times_ms) < 2:
-        return 0
-    
-    periods_seconds = [(epoch_times_ms[i] - epoch_times_ms[i-1]) / 1000.0 for i in range(1, len(epoch_times_ms))]
-    average_period_seconds = sum(periods_seconds) / len(periods_seconds)
-    average_frequency = 1 / average_period_seconds if average_period_seconds != 0 else 0
-    
-    return average_frequency
-
-def calculate_rolling_average(data, window_size):
-    """
-    Calculates the rolling average of a list of numbers using numpy,
-    padding the beginning and end with the first and last values respectively to maintain input array length.
-
-    Parameters:
-    - data: List or numpy array of numbers.
-    - window_size: Size of the moving window to calculate the average.
-
-    Returns:
-    - Numpy array of rolling average values, same length as input data.
-    """
-    if window_size <= 1:
-        return np.array(data)
-
-    # Determine the amount of padding
-    pad_size = window_size // 2
-    # For even window sizes, reduce the padding by 1 at the start
-    start_pad_size = pad_size if window_size % 2 != 0 else pad_size - 1
-    # Pad the beginning with the first element and the end with the last element
-    padded_data = np.pad(data, (start_pad_size, pad_size), 'edge')
-    # Calculate the rolling average using 'valid' mode
-    rolling_avg = np.convolve(padded_data, np.ones(window_size) / window_size, mode='valid')
-
-    return rolling_avg
-
-def calculate_angular_change(headings, times):
-    """
-    Calculates the angular change between consecutive headings for each timestep.
-    Parameters:
-    - headings: List of headings in degrees.
-    - times: List of times. The length must match the headings list.
-    Returns:
-    - List of tuples containing (time difference, angular change) for each timestep.
-    """
-    angular_changes = []
-    for i in range(1, len(headings)):
-        # Calculate time difference
-        time_diff = times[i] - times[i-1]
-        # Calculate angular change, accounting for angle wrap-around
-        angle_diff = (headings[i] - headings[i-1] + 180) % 360 - 180
-        angular_changes.append(math.radians(angle_diff))
-    
-    return angular_changes
-
-def calibrate_mag(data):
-    # Compute calibration center and transformation matrix
-    data_regularized = data_regularize(data, divs=8)
-    center, evecs, radii, v = ellipsoid_fit(data_regularized)
-
-    a, b, c = radii
-    r = np.abs(a * b * c) ** (1. / 3.)
-    D = np.array([[r/a, 0., 0.], [0., r/b, 0.], [0., 0., r/c]])
-    #http://www.cs.brandeis.edu/~cs155/Lecture_07_6.pdf
-    #affine transformation from ellipsoid to sphere (translation excluded)
-    TR = evecs.dot(D).dot(evecs.T)
-
-    # Subtract the center offset from each data point in the dataset
-    # and apply the calibration transformation
-    calibrated_data = np.array([np.dot(TR, data_point - center) for data_point in data])
-
-    return calibrated_data
-
-def calculateHeading(accel_data, gyro_data, mag_data, gnss_initial_heading):
-    # ensure same number of samples
-    if not len(accel_data) == len(mag_data):
-        raise ValueError("Both lists must equal size.")
-
-    q = ahrs.Quaternion()
-    # yaw, pitch, roll in radians
-    q = q.from_angles(np.array([math.radians(gnss_initial_heading),0.0, 0.0]))
-
-    # quats = sensorFusion.orientationFLAE(mag_data, accel_data)
-    quats = sensorFusion.orientationEKF(mag_data, accel_data, gyro_data, q)
-    euler_list = sensorFusion.convertToEuler(quats)
-    heading = [euler[2] for euler in euler_list]
-    pitch = [euler[1] for euler in euler_list]
-    roll = [euler[0] for euler in euler_list]
-    return heading, pitch, roll
     
 if __name__ == "__main__":
     # Load data from a csv
     dir_path = '/Users/rogerberman/Desktop/YawFusionDrives'
-    drive = 'drive3'
+    drive = 'drive1'
     gnss_path = os.path.join(dir_path, drive, f'{drive}_gnss.csv')
     imu_path = os.path.join(dir_path, drive, f'{drive}_imu.csv')
     mag_path = os.path.join(dir_path, drive, f'{drive}_mag.csv')
@@ -350,7 +252,7 @@ if __name__ == "__main__":
     fused_heading = [heading_val + 360 if heading_val < 0 else heading_val for heading_val in fused_heading]
 
     # used when the heading is off by 180 degrees
-    fused_heading = [heading_val - 180 for heading_val in fused_heading]
+    # fused_heading = [heading_val - 180 for heading_val in fused_heading]
 
     # Calculate the difference between the GNSS heading and the fused heading 
     heading_diff = []
@@ -365,7 +267,7 @@ if __name__ == "__main__":
     # gnss_angular_changes = calculate_angular_change(heading, gnss_time)
 
     # plot_path = os.path.join(dir_path, drive, f'EKF_plot_testing_{heading_diff}.png')
-    # plot_signals_over_time(gnss_time, heading_diff, heading_accuracy, 'GNSS Heading', 'Heading Accuracy', None)
+    plot_signals_over_time(gnss_time, heading, fused_heading, 'GNSS Heading', 'Fused Heading', None)
     plt.show()
 
     # print("Creating map...")
