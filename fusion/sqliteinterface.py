@@ -2,6 +2,8 @@ import sqlite3
 from datetime import datetime
 
 DATA_LOGGER_PATH = '/data/recording/data-logger.v1.4.4.db'
+DESC = 'DESC'
+ASC = 'ASC'
 
 class IMUData():
     def __init__(self, ax, ay, az, gx, gy, gz, time):
@@ -69,7 +71,7 @@ class SqliteInterface:
         self.connection = sqlite3.connect(DATA_LOGGER_PATH)
         self.cursor = self.connection.cursor()
 
-    def queryImu(self, desiredTime: int, pastRange: int):
+    def queryImu(self, desiredTime: int, pastRange: int, order: str):
         """ 
         Queries the IMU table for accelerometer and gyroscope data for a given epoch timestamp.
         Args:
@@ -83,7 +85,7 @@ class SqliteInterface:
                     FROM imu 
                     WHERE time > \'{datetime.fromtimestamp((desiredTime - pastRange)/1000.0)}\'
                     AND time <= \'{datetime.fromtimestamp(desiredTime/1000.0)}\'
-                    ORDER BY time DESC
+                    ORDER BY time {order}
                 '''
         rows = self.cursor.execute(query).fetchall()
         results = [IMUData(row[0], row[1], row[2], row[3], row[4], row[5], row[6]) for row in rows]
@@ -91,7 +93,7 @@ class SqliteInterface:
     
     # desiredTime is a epoch timestamp
     # pastRange is the number of seconds before desiredTime to query for defaults tp 250 which is a quarter of a second
-    def queryMagnetometer(self, desiredTime: int, pastRange: int):
+    def queryMagnetometer(self, desiredTime: int, pastRange: int, order: str):
         """
         Queries the magnetometer table for magnetometer data for a given epoch timestamp.
         Args:
@@ -105,19 +107,19 @@ class SqliteInterface:
                     FROM magnetometer
                     WHERE system_time > \'{datetime.fromtimestamp((desiredTime - pastRange)/1000.0)}\'
                     AND system_time <= \'{datetime.fromtimestamp(desiredTime/1000.0)}\'
-                    ORDER BY system_time DESC
+                    ORDER BY system_time {order}
                 '''
         rows = self.cursor.execute(query).fetchall()
         results = [MagData(row[0], row[1], row[2], row[3]) for row in rows]
         return results
     
-    def queryGnss(self, desiredTime: int, pastRange: int):
+    def queryGnss(self, desiredTime: int, pastRange: int, order: str):
         query = f'''
                     SELECT latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, system_time
                     FROM gnss 
                     WHERE system_time > \'{datetime.fromtimestamp((desiredTime - pastRange)/1000.0)}\'
                     AND system_time <= \'{datetime.fromtimestamp(desiredTime/1000.0)}\'
-                    ORDER BY system_time DESC
+                    ORDER BY system_time {order}
                 '''
         results = self.cursor.execute(query).fetchall()
         results = [GNSSData(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]) for row in results]
@@ -125,11 +127,11 @@ class SqliteInterface:
 
 sqliteInterface = SqliteInterface()
 
-def getImuData(desiredTime: int, pastRange: int = 250):
-    return sqliteInterface.queryImu(desiredTime, pastRange)
+def getImuData(desiredTime: int, pastRange: int = 250, order: str = DESC):
+    return sqliteInterface.queryImu(desiredTime, pastRange, order)
 
-def getMagnetometerData(desiredTime: int, pastRange: int = 250):
-    return sqliteInterface.queryMagnetometer(desiredTime, pastRange)
+def getMagnetometerData(desiredTime: int, pastRange: int = 250, order: str = DESC):
+    return sqliteInterface.queryMagnetometer(desiredTime, pastRange, order)
 
-def getGnssData(desiredTime: int, pastRange: int = 250):
-    return sqliteInterface.queryGnss(desiredTime, pastRange)
+def getGnssData(desiredTime: int, pastRange: int = 250, order: str = DESC):
+    return sqliteInterface.queryGnss(desiredTime, pastRange, order)

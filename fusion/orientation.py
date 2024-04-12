@@ -1,10 +1,10 @@
 import numpy as np
 from .sensorFusion import calculateHeading
-from .sqliteinterface import getImuData, getMagnetometerData, getGnssData
+from .sqliteinterface import getImuData, getMagnetometerData, getGnssData, ASC
 from .utils import calculateAttributesAverage, extractAndSmoothImuData, extractAndSmoothMagData, extractGNSSData
 from .ellipsoid_fit import calibrate_mag
 
-SEVEN_MINUTES = 1000 * 60 * 7 # in millisecond epoch time
+TEN_MINUTES = 1000 * 60 * 10 # in millisecond epoch time
 
 def isUpsideDown(time: int = None):
     """ 
@@ -34,12 +34,12 @@ def getDashcamToVehicleHeadingOffset(time: int = None, pastRange: int= None):
 
     # if no pastRange given get data for 7 minutes
     if pastRange is None:
-        pastRange = SEVEN_MINUTES
+        pastRange = TEN_MINUTES
 
     # get data from the database
-    imu_data = getImuData(time, pastRange)
-    mag_data = getMagnetometerData(time, pastRange)
-    gnss_data = getGnssData(time, pastRange)
+    imu_data = getImuData(time, pastRange, ASC)
+    mag_data = getMagnetometerData(time, pastRange, ASC)
+    gnss_data = getGnssData(time, pastRange, ASC)
 
     # Extract the data from the objects
     acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_time = extractAndSmoothImuData(imu_data)

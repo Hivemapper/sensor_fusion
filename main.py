@@ -51,14 +51,18 @@ def printIsUpsideDown():
         print(f"Device is upside down: {fusion.isUpsideDown(now)}")
         time.sleep(0.1)
 
+def printDashcamToVehicleHeadingOffset():
+    fusion.getDashcamToVehicleHeadingOffset()
+
 ################# Whats on #################
 
 # Record Data using 
 if __name__ == "__main__":
     ##### UNCOMMMENT THE FUNCTION YOU WISH TO USE #####
-    printEulerAngle()
+    # printEulerAngle()
     # printAccelData()
     # printGyroData()
     # printMagData()
     # printGNSSData()
     # printIsUpsideDown()
+    printDashcamToVehicleHeadingOffset()

@@ -1,6 +1,7 @@
 import numpy as np
 import math
 from typing import List
+from datetime import datetime, timezone
 
 from .sqliteinterface import IMUData, MagData, GNSSData
 
@@ -132,8 +133,9 @@ def extractAndSmoothImuData(imu_data: List[IMUData]):
         gyro_x.append(math.radians(point.gx))
         gyro_y.append(math.radians(point.gy))
         gyro_z.append(math.radians(point.gz))
-        time.append(point.time)
+        time.append(convertTimeToEpoch(point.time))
 
+    print(f"IMU data length: {len(imu_data)}")
     # Assuming calculateAverageFrequency and calculateRollingAverage are defined elsewhere
     freq = math.floor(calculateAverageFrequency(time))
     print(f"IMU data frequency: {freq} Hz")
@@ -163,7 +165,7 @@ def extractAndSmoothMagData(data: List[MagData]):
         mag_x.append(point.mx)
         mag_y.append(point.my)
         mag_z.append(point.mz)
-        time.append(point.time)
+        time.append(convertTimeToEpoch(point.time))
 
     # Assuming calculateAverageFrequency and calculateRollingAverage are defined elsewhere
     freq = math.floor(calculateAverageFrequency(time))
@@ -198,6 +200,41 @@ def extractGNSSData(data: List[GNSSData]):
         headingAccuracy.append(point.headingAccuracy)
         hdop.append(point.hdop)
         gdop.append(point.gdop)
-        time.append(point.time)
+        time.append(convertTimeToEpoch(point.time))
 
     return lat, lon, alt, speed, heading, headingAccuracy, hdop, gdop, time
+
+
+def convertTimeToEpoch(time_str):
+    """
+    Converts a time string in the format 'YYYY-MM-DD HH:MM:SS' or 'YYYY-MM-DD HH:MM:SS.sss' to epoch milliseconds.
+    Parameters:
+    - time_str: A string representing the time, possibly with milliseconds ('YYYY-MM-DD HH:MM:SS[.sss]').
+    Returns:
+    - int: The epoch time in milliseconds.
+    """
+    # Determine if the time string includes milliseconds
+    if '.' in time_str:
+        format_str = '%Y-%m-%d %H:%M:%S.%f'
+    else:
+        format_str = '%Y-%m-%d %H:%M:%S'
+    
+    timestamp_dt = datetime.strptime(time_str, format_str)
+    epoch_ms = int(timestamp_dt.replace(tzinfo=timezone.utc).timestamp() * 1000)
+    return epoch_ms
+
+def convertEpochToTime(epoch_ms):
+    """
+    Converts an epoch time in milliseconds to a time string in the format 'YYYY-MM-DD HH:MM:SS.sss'.
+
+    Parameters:
+    - epoch_ms: The epoch time in milliseconds.
+
+    Returns:
+    - str: A string representing the time in the format 'YYYY-MM-DD HH:MM:SS.sss'.
+    """
+    # Convert milliseconds to seconds
+    epoch_s = epoch_ms / 1000.0
+    # Convert to datetime object
+    datetime_obj = datetime.fromtimestamp(epoch_s, tz=timezone.utc)
+    return datetime_obj.strftime('%Y-%m-%d %H:%M:%S.%f')

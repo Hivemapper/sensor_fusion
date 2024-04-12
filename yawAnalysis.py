@@ -188,6 +188,8 @@ if __name__ == "__main__":
     acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_time = extractIMUData(imu_data)
     mag_x, mag_y, mag_z, mag_time = extractMagData(mag_data)
     latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, gnss_time = extractGNSSData(gnss_data)
+    # print(f"GNSS Start Time: {gnss_time[0]}",
+    #       f"\nGNSS End Time: {gnss_time[-1]}")
     print("Data extracted successfully!")
     
     print("Downsampling data...")
