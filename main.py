@@ -64,5 +64,5 @@ if __name__ == "__main__":
     # printGyroData()
     # printMagData()
     # printGNSSData()
-    # printIsUpsideDown()
-    printDashcamToVehicleHeadingOffset()
+    printIsUpsideDown()
+    # printDashcamToVehicleHeadingOffset()

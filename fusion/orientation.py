@@ -1,8 +1,11 @@
 import numpy as np
+from geopy.distance import geodesic
+
 from .sensorFusion import calculateHeading, equalize_list_lengths, convertToEuler, averageEulerAngles, orientationFLAE
 from .sqliteinterface import getImuData, getMagnetometerData, getGnssData, ASC
 from .utils import calculateAttributesAverage, extractAndSmoothImuData, extractAndSmoothMagData, extractGNSSData
 from .ellipsoid_fit import calibrate_mag
+
 
 TEN_MINUTES = 1000 * 60 * 10 # in millisecond epoch time
 QUARTER_SECOND = 250 # in millisecond epoch time
@@ -80,17 +83,14 @@ def getGNSSHeading(time: int = None):
     gnss_data = getGnssData(time)
     current_heading = gnss_data[0].heading
     current_heading_accuracy = gnss_data[0].headingAccuracy
+    current_position = (gnss_data[0].latitude, gnss_data[0].longitude)
     if current_heading_accuracy < GNSS_HEADING_ACCURACY_THRESHOLD:
         return current_heading
     else:
         older_gnss_data = getGnssData(time-QUARTER_SECOND,THIRTY_SECONDS)
         for data in older_gnss_data:
-            #TODO: Fix to calculate distance correctly when dealing with lat/long
-            x1 = gnss_data[0].latitude
-            y1 = gnss_data[0].longitude
-            x2 = data.latitude
-            y2 = data.longitude
-            distance = np.sqrt((x2-x1)**2 + (y2-y1)**2)
+            old_position = (data.latitude, data.longitude)
+            distance = geodesic(current_position, old_position).meters
             if (data.headingAccuracy < GNSS_HEADING_ACCURACY_THRESHOLD and
                 distance < GNSS_DISTANCE_THRESHOLD):
                 return data.heading

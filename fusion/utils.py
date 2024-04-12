@@ -70,12 +70,11 @@ def calculateAngularChange(headings, times):
 
 def calculateAttributesAverage(data_list):
     """
-    Calculates the average value of each attribute for a list of objects.
+    Calculates the average value of each attribute for a list of objects, ignoring non-numeric data.
 
     This function iterates over a list of objects, computing the average value of
-    each attribute that is not a method and does not begin with '__'. It assumes
-    that all objects in the list have the same set of attributes and that these
-    attributes have numerical values suitable for averaging.
+    each attribute that is not a method, does not begin with '__', and is numeric.
+    It assumes that all objects in the list have the same set of attributes.
 
     Parameters:
     - data_list (list): A list of objects with common attributes to be averaged.
@@ -97,23 +96,27 @@ def calculateAttributesAverage(data_list):
         return None
     
     if len(data_list) == 1:
-        return data_list[0].__dict__
+        return {k: v for k, v in data_list[0].__dict__.items() if isinstance(v, (int, float))}
     
-    num_instances = len(data_list)
     sum_values = {}
+    count_values = {}
     attribute_names = [attr for attr in dir(data_list[0]) if not attr.startswith("__") and not callable(getattr(data_list[0], attr))]
-    
-    # Initialize sum_values dictionary
+
+    # Initialize sum_values and count_values dictionaries
     for attr in attribute_names:
         sum_values[attr] = 0
+        count_values[attr] = 0
     
-    # Sum up values for each attribute
+    # Sum up values for each attribute, only if they are numeric
     for instance in data_list:
         for attr in attribute_names:
-            sum_values[attr] += getattr(instance, attr)
+            value = getattr(instance, attr)
+            if isinstance(value, (int, float)):  # Check if value is numeric
+                sum_values[attr] += value
+                count_values[attr] += 1
     
-    # Calculate the average for each attribute
-    avg_values = {attr: total / num_instances for attr, total in sum_values.items()}
+    # Calculate the average for each attribute, considering only attributes with non-zero counts
+    avg_values = {attr: sum_values[attr] / count_values[attr] for attr in attribute_names if count_values[attr] > 0}
     
     return avg_values
 
