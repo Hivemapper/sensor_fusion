@@ -174,7 +174,7 @@ def extractGNSSData(data):
 if __name__ == "__main__":
     # Load data from a csv
     dir_path = '/Users/rogerberman/Desktop/YawFusionDrives'
-    drive = 'drive1'
+    drive = 'drive2'
     gnss_path = os.path.join(dir_path, drive, f'{drive}_gnss.csv')
     imu_path = os.path.join(dir_path, drive, f'{drive}_imu.csv')
     mag_path = os.path.join(dir_path, drive, f'{drive}_mag.csv')
@@ -253,8 +253,9 @@ if __name__ == "__main__":
     # used to translate the fused heading to the correct range
     fused_heading = [heading_val + 360 if heading_val < 0 else heading_val for heading_val in fused_heading]
 
-    # used when the heading is off by 180 degrees
-    # fused_heading = [heading_val - 180 for heading_val in fused_heading]
+    # check last heading diff to make decision
+    if abs(heading[-1] - fused_heading[-1]) > 100:
+        fused_heading = [heading_val - 180 for heading_val in fused_heading]
 
     # Calculate the difference between the GNSS heading and the fused heading 
     heading_diff = []

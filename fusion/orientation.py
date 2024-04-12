@@ -102,7 +102,9 @@ def getDashcamToVehicleHeadingOffset(time: int = None, pastRange: int= None):
     fused_heading = [heading_val + 360 if heading_val < 0 else heading_val for heading_val in fused_heading]
 
     # used when the heading is off by 180 degrees
-    # fused_heading = [heading_val - 180 for heading_val in fused_heading]
+    # check last heading diff to make decision
+    if abs(heading[-1] - fused_heading[-1]) > 100:
+        fused_heading = [heading_val - 180 for heading_val in fused_heading]
 
     heading_diff = []
     for i in range(len(headingAccuracy)):
