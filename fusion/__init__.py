@@ -1,2 +1,2 @@
 from .sqliteinterface import getGnssData, getImuData, getMagnetometerData
-from .orientation import isUpsideDown, getDashcamToVehicleYawOffset
+from .orientation import isUpsideDown, getDashcamToVehicleHeadingOffset

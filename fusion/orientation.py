@@ -22,7 +22,7 @@ def isUpsideDown(time: int = None):
     # check if the device is upside down
     return imu_ave['az'] < -0.1
 
-def getDashcamToVehicleYawOffset(time: int = None, pastRange: int= None):
+def getDashcamToVehicleHeadingOffset(time: int = None, pastRange: int= None):
     """
     Returns the yaw offset between the dashcam and vehicle in degrees.
     Returns:
