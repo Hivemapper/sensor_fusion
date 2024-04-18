@@ -3,11 +3,12 @@ import csv
 import os
 import numpy as np
 from datetime import datetime, timezone
+import sys
+sys.path.insert(0, '/Users/rogerberman/sensor-fusion')  # Add the project root to the Python path
+
 
 from plottingCode import plot_signal_over_time, plot_signals_over_time, create_map
-from fusion.sensorFusion import calculateHeading
-from fusion.utils import calculateAverageFrequency, calculateRollingAverage
-from fusion.ellipsoid_fit import calibrate_mag
+from fusion import calculateHeading, calculateAverageFrequency, calculateRollingAverage, calibrate_mag
 import ahrs
 
 import matplotlib.pyplot as plt
@@ -169,7 +170,7 @@ def extractGNSSData(data):
     freq = math.floor(calculateAverageFrequency(time_data))
     print(f"GNSS data frequency: {freq} Hz")
 
-    return latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, time_data
+    return latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, time_data, freq
     
 if __name__ == "__main__":
     # Load data from a csv
@@ -187,7 +188,7 @@ if __name__ == "__main__":
     print("Extracting data...")
     acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_time = extractIMUData(imu_data)
     mag_x, mag_y, mag_z, mag_time = extractMagData(mag_data)
-    latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, gnss_time = extractGNSSData(gnss_data)
+    latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, gnss_time, gnssFreq = extractGNSSData(gnss_data)
     # print(f"GNSS Start Time: {gnss_time[0]}",
     #       f"\nGNSS End Time: {gnss_time[-1]}")
     print("Data extracted successfully!")
@@ -245,7 +246,7 @@ if __name__ == "__main__":
     acc_bundle = np.array(list(zip(acc_x_down, acc_y_down, acc_z_down)))
     gyro_bundle = np.array(list(zip(gyro_x_down, gyro_y_down, gyro_z_down)))
     print("Calculating heading...")
-    fused_heading, pitch, roll = calculateHeading(acc_bundle, gyro_bundle, calibrated_mag_bundle, heading[0])
+    fused_heading, pitch, roll = calculateHeading(acc_bundle, gyro_bundle, calibrated_mag_bundle, heading[0], gnssFreq)
 
     # Mag Straight Heading
     # mag_headings = [(math.atan2(y, x) * 180 / math.pi) % 360 for x, y in zip(mag_x_down, mag_y_down)]
