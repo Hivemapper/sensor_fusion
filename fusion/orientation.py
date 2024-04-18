@@ -118,7 +118,7 @@ def getDashcamToVehicleHeadingOffset(time: int = None, pastRange: int= None):
     # Extract the data from the objects
     acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_time = extractAndSmoothImuData(imu_data)
     mag_x, mag_y, mag_z, mag_time = extractAndSmoothMagData(mag_data)
-    _, _, _, speed, heading, headingAccuracy, hdop, gdop, gnss_time = extractGNSSData(gnss_data)
+    _, _, _, speed, heading, headingAccuracy, hdop, gdop, gnss_time, gnssFreq = extractGNSSData(gnss_data)
 
     # downsample the data to match GNSS frequency
     acc_x_down = np.interp(gnss_time, imu_time, acc_x)
@@ -170,7 +170,7 @@ def getDashcamToVehicleHeadingOffset(time: int = None, pastRange: int= None):
     acc_bundle = np.array(list(zip(acc_x_down, acc_y_down, acc_z_down)))
     gyro_bundle = np.array(list(zip(gyro_x_down, gyro_y_down, gyro_z_down)))
 
-    fused_heading, _, _ = calculateHeading(acc_bundle, gyro_bundle, calibrated_mag_bundle, heading[0])
+    fused_heading, _, _ = calculateHeading(acc_bundle, gyro_bundle, calibrated_mag_bundle, heading[0], gnssFreq)
 
     # used to translate the fused heading from -180:180 to the correct range 0:360
     fused_heading = [heading_val + 360 if heading_val < 0 else heading_val for heading_val in fused_heading]

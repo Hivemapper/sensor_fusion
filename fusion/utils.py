@@ -141,8 +141,6 @@ def extractAndSmoothImuData(imu_data: List[IMUData]):
         gyro_z.append(math.radians(point.gz))
         time.append(convertTimeToEpoch(point.time))
 
-    print(f"IMU data length: {len(imu_data)}")
-    # Assuming calculateAverageFrequency and calculateRollingAverage are defined elsewhere
     freq = math.floor(calculateAverageFrequency(time))
     print(f"IMU data frequency: {freq} Hz")
     freq_fourth = freq // 4
@@ -173,7 +171,6 @@ def extractAndSmoothMagData(data: List[MagData]):
         mag_z.append(point.mz)
         time.append(convertTimeToEpoch(point.time))
 
-    # Assuming calculateAverageFrequency and calculateRollingAverage are defined elsewhere
     freq = math.floor(calculateAverageFrequency(time))
     print(f"Magnetometer data frequency: {freq} Hz")
     freq_fourth = freq // 4
@@ -208,7 +205,9 @@ def extractGNSSData(data: List[GNSSData]):
         gdop.append(point.gdop)
         time.append(convertTimeToEpoch(point.time))
 
-    return lat, lon, alt, speed, heading, headingAccuracy, hdop, gdop, time
+    freq = math.floor(calculateAverageFrequency(time))
+
+    return lat, lon, alt, speed, heading, headingAccuracy, hdop, gdop, time, freq
 
 
 def convertTimeToEpoch(time_str):

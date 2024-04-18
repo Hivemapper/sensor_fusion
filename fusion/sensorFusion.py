@@ -2,8 +2,13 @@ import numpy as np
 import ahrs
 import math
 
+########### FUSION OPTIONS ############
+SF_MAGNETIC_REF = [22371.8, 5180, 41715.1]
+SF_MAGNETIC_DIP = 61.16779
+SENSOR_FREQ = 7.0
+
 ############ MAIN FUNCTIONS ############
-def calculateHeading(accel_data, gyro_data, mag_data, gnss_initial_heading):
+def calculateHeading(accel_data, gyro_data, mag_data, gnss_initial_heading, gnssFreq=SENSOR_FREQ, mag_ref=SF_MAGNETIC_REF):
     # ensure same number of samples
     if not len(accel_data) == len(mag_data):
         raise ValueError("Both lists must equal size.")
@@ -13,7 +18,7 @@ def calculateHeading(accel_data, gyro_data, mag_data, gnss_initial_heading):
     q = q.from_angles(np.array([math.radians(gnss_initial_heading),0.0, 0.0]))
 
     # quats = sensorFusion.orientationFLAE(mag_data, accel_data)
-    quats = orientationEKF(mag_data, accel_data, gyro_data, q)
+    quats = orientationEKF(mag=mag_data, accel=accel_data, gyro=gyro_data, q0=q, freq=gnssFreq, mag_ref=mag_ref)
     euler_list = convertToEuler(quats)
     heading, pitch, roll = [], [], []
     for euler in euler_list:
@@ -75,12 +80,6 @@ def equalize_list_lengths(list1, list2):
     
     return list1, list2
 
-
-########### FUSION OPTIONS ############
-SF_MAGNETIC_REF = [22371.8, 5180, 41715.1]
-SF_MAGNETIC_DIP = 61.16779
-SENSOR_FREQ = 7.0
-
 ########### FUSION ALGORITHM FUNCTIONS ############
 
 def orientationAQUA(mag, accel, gyro):
@@ -98,13 +97,13 @@ def orientationComplementary(mag, accel, gyro):
     )
     return orientation.Q
 
-def orientationEKF(mag, accel, gyro, q0):
+def orientationEKF(mag, accel, gyro, q0, freq, mag_ref):
     orientation = ahrs.filters.EKF(
         gyr=gyro, 
         acc=accel, 
         mag=mag, 
-        frequency= SENSOR_FREQ, 
-        magnetic_ref = SF_MAGNETIC_REF,
+        frequency= freq, 
+        magnetic_ref = mag_ref,
         # magnetic_ref= SF_MAGNETIC_DIP,
         # g, a, m
         noises=[0.001, 0.175, 0.9],
