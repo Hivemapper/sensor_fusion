@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 from matplotlib.colors import Normalize
 from matplotlib.cm import viridis
+from PIL import Image
 import numpy as np
 
 
@@ -137,6 +138,59 @@ def visualize_confidence_heatmap(heatmap, cell_size):
                     ha='center', va='center', fontsize=8)
     plt.show()
 
+def overlay_heatmap_on_image(image_path, heatmap):
+    # Load the image
+    img = Image.open(image_path)
+    img = img.convert('RGBA')  # Ensure image is in RGBA format for transparency handling
+
+    # Print the shape of the original image
+    img_array = np.array(img)  # Convert to numpy array to access the shape
+    print("Image shape:", img_array.shape)
+
+    # Create an RGBA image for the heatmap
+    norm = Normalize(vmin=np.min(heatmap), vmax=np.max(heatmap))
+    cmap = viridis  # You can choose any other colormap that suits your preference
+    heatmap_rgba = cmap(norm(heatmap))  # This will give us a RGBA heatmap
+    heatmap_rgba = (heatmap_rgba * 255).astype(np.uint8)  # Scale to 0-255
+
+    # Print the shape of the heatmap
+    print("Heatmap shape:", heatmap_rgba.shape[:2])  # Only print the spatial dimensions
+
+    # Create a PIL image from the heatmap array
+    heatmap_img = Image.fromarray(heatmap_rgba, 'RGBA')
+    
+    # Blend the heatmap and the image
+    blended_img = Image.blend(img, heatmap_img, alpha=0.7)  # alpha controls the transparency
+
+    # Display the blended image
+    plt.imshow(blended_img)
+    plt.axis('off')  # Turn off axis numbers and ticks
+    plt.show()
+
+
+def meters_to_latlon(distance, lat, lon, heading):
+    # Earth's radius, sphere
+    R = 6378137
+
+    # Convert heading to radians
+    bearing = math.radians(heading)
+
+    # Convert latitude and longitude to radians
+    lat1 = math.radians(lat)
+    lon1 = math.radians(lon)
+
+    # Calculate new latitude and longitude
+    lat2 = math.asin(math.sin(lat1) * math.cos(distance / R) +
+                     math.cos(lat1) * math.sin(distance / R) * math.cos(bearing))
+
+    lon2 = lon1 + math.atan2(math.sin(bearing) * math.sin(distance / R) * math.cos(lat1),
+                             math.cos(distance / R) - math.sin(lat1) * math.sin(lat2))
+
+    # Convert back to degrees
+    lat2 = math.degrees(lat2)
+    lon2 = math.degrees(lon2)
+
+    return lat2, lon2
 
 
 if __name__ == "__main__": 
@@ -149,7 +203,7 @@ if __name__ == "__main__":
         if detection['eph'] < 10:
             filtered_data.append(detection)
     print(f"Number of detections: {len(filtered_data)}")
-    print(filtered_data[0])
+    # print(filtered_data[0])
 
     locations = []
     for detection in filtered_data:
@@ -171,15 +225,19 @@ if __name__ == "__main__":
     #     print(location)
     # plot_points_on_map(locations)
 
-    width, height = 480, 640
-    cell_size = 40
+    width, height = 640, 480
+    cell_size = 10
     max_heat_value = 1
     min_heat_value = 0.5
     heatmap = make_confidence_heatmap(width, height, cell_size, max_heat_value, min_heat_value)
     # print(heatmap)
-    visualize_confidence_heatmap(heatmap, cell_size)
+    # visualize_confidence_heatmap(heatmap, cell_size)
+    frame_id = 1689
+    image_path = f"/Users/rogerberman/Downloads/frames_with_depth/{frame_id}_0.jpg"
+    overlay_heatmap_on_image(image_path, heatmap)
+
     for detection in filtered_data:
-        print(get_confidence_heatmap_average(heatmap, detection['box']))
+        print(f"FrameId: {detection['frameId']}, Confidence: {get_confidence_heatmap_average(heatmap, detection['box'])}" )
     
 
 
