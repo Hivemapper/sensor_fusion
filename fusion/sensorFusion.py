@@ -106,9 +106,8 @@ def orientationEKF(mag, accel, gyro, q0, freq, mag_ref):
         magnetic_ref = mag_ref,
         # magnetic_ref= SF_MAGNETIC_DIP,
         # g, a, m
-        noises=[0.001, 0.175, 0.9],
-        # noises=[0.0005, 0.21, 2.9],
-        # noises=[0.01, 0.85, 5],
+        noises=[0.001, 0.175, 0.7],
+        # noises=[0.001, 0.175, 0.75],
         # frame='NED',
         q0=q0,
     )

@@ -2,7 +2,7 @@ import numpy as np
 from geopy.distance import geodesic
 
 from .sensorFusion import calculateHeading, equalize_list_lengths, convertToEuler, averageEulerAngles, orientationFLAE
-from .sqliteinterface import getImuData, getMagnetometerData, getGnssData, ASC
+# from .sqliteinterface import getImuData, getMagnetometerData, getGnssData, ASC
 from .utils import calculateAttributesAverage, extractAndSmoothImuData, extractAndSmoothMagData, extractGNSSData
 from .ellipsoid_fit import calibrate_mag
 

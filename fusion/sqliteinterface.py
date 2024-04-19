@@ -125,13 +125,13 @@ class SqliteInterface:
         results = [GNSSData(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]) for row in results]
         return results
 
-sqliteInterface = SqliteInterface()
+# sqliteInterface = SqliteInterface()
 
-def getImuData(desiredTime: int, pastRange: int = 250, order: str = DESC):
-    return sqliteInterface.queryImu(desiredTime, pastRange, order)
+# def getImuData(desiredTime: int, pastRange: int = 250, order: str = DESC):
+#     return sqliteInterface.queryImu(desiredTime, pastRange, order)
 
-def getMagnetometerData(desiredTime: int, pastRange: int = 250, order: str = DESC):
-    return sqliteInterface.queryMagnetometer(desiredTime, pastRange, order)
+# def getMagnetometerData(desiredTime: int, pastRange: int = 250, order: str = DESC):
+#     return sqliteInterface.queryMagnetometer(desiredTime, pastRange, order)
 
-def getGnssData(desiredTime: int, pastRange: int = 250, order: str = DESC):
-    return sqliteInterface.queryGnss(desiredTime, pastRange, order)
+# def getGnssData(desiredTime: int, pastRange: int = 250, order: str = DESC):
+#     return sqliteInterface.queryGnss(desiredTime, pastRange, order)
