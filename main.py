@@ -74,7 +74,7 @@ if __name__ == "__main__":
     db_interface = fusion.SqliteInterface(data_logger_path)
     current_time = 1713487816514 + 1000
     back_amount = 1713487816514 - 1713486814108 + 5000
-    heading, fused_heading, gnss_time = fusion.getDashcamToVehicleHeadingOffset(db_interface, current_time, back_amount)
-    plot_signals_over_time(gnss_time, heading, fused_heading, "Heading", "Fused Heading")
+    fusion.getDashcamToVehicleHeadingOffset(db_interface, current_time, back_amount)
+    # plot_signals_over_time(gnss_time, heading, fused_heading, "Heading", "Fused Heading")
 
 

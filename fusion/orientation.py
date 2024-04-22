@@ -115,10 +115,6 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, time: int = 
     mag_data = db_interface.queryMagnetometer(time, pastRange, ASC)
     gnss_data = db_interface.queryGnss(time, pastRange, ASC)
 
-    print(f"IMU data: {len(imu_data)}")
-    print(f"Mag data: {len(mag_data)}")
-    print(f"GNSS data: {len(gnss_data)}")
-
     # Extract the data from the objects
     acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_time = extractAndSmoothImuData(imu_data)
     mag_x, mag_y, mag_z, mag_time = extractAndSmoothMagData(mag_data)
