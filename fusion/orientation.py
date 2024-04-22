@@ -192,7 +192,7 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, time: int = 
     heading_diff_mean = np.mean(heading_diff)
     print(f"Mean heading difference: {heading_diff_mean}")
 
-    return heading, fused_heading, gnss_time
+    return heading_diff_mean
 
     
     
