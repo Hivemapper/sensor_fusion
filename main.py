@@ -1,5 +1,7 @@
 import fusion
 import time
+import os
+from testingScripts.plottingCode import plot_signals_over_time
 
 
 ################ Main Functions ################
@@ -64,5 +66,15 @@ if __name__ == "__main__":
     # printGyroData()
     # printMagData()
     # printGNSSData()
-    printIsUpsideDown()
+    # printIsUpsideDown()
     # printDashcamToVehicleHeadingOffset()
+    dir_path = '/Users/rogerberman/Desktop/YawFusionDrives'
+    drive = 'drive4'
+    data_logger_path = os.path.join(dir_path, drive, 'data-logger.v1.4.4.db')
+    db_interface = fusion.SqliteInterface(data_logger_path)
+    current_time = 1713487816514 + 1000
+    back_amount = 1713487816514 - 1713486814108 + 5000
+    heading, fused_heading, gnss_time = fusion.getDashcamToVehicleHeadingOffset(db_interface, current_time, back_amount)
+    plot_signals_over_time(gnss_time, heading, fused_heading, "Heading", "Fused Heading")
+
+
