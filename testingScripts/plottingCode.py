@@ -68,7 +68,7 @@ def plot_signals_over_time(seconds, signal1_values, signal2_values, signal1_labe
         plt.savefig(save_path)  # Save the figure to the file path provided
         plt.close()  # Close the plot figure to prevent it from displaying in the notebook/output
     else:
-        plt.show(block=False)  # Display the plot if no file path is provided
+        plt.show()  # Display the plot if no file path is provided
 
 
 def create_map(latitude, longitude, heading, map_filename, plot_every=1):

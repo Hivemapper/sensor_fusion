@@ -2,7 +2,7 @@ import numpy as np
 from geopy.distance import geodesic
 
 from .sensorFusion import calculateHeading, equalize_list_lengths, convertToEuler, averageEulerAngles, orientationFLAE
-from .sqliteinterface import getImuData, getMagnetometerData, getGnssData, ASC
+from .sqliteinterface import SqliteInterface, ASC
 from .utils import calculateAttributesAverage, extractAndSmoothImuData, extractAndSmoothMagData, extractGNSSData
 from .ellipsoid_fit import calibrate_mag
 
@@ -19,7 +19,7 @@ HEADING_DIFF_MAGNETOMETER_FLIP_THRESHOLD = 100 #in degreed
 GNSS_HEADING_ACCURACY_THRESHOLD = 3.0
 GNSS_DISTANCE_THRESHOLD = 1.5 # meters
 
-def getEulerAngle(desiredTime: int):
+def getEulerAngle(db_interface: SqliteInterface, desiredTime: int):
     """ 
     Returns the average Euler angles (roll, pitch, yaw) in degrees for the given epoch millisecond times.
     Args:
@@ -28,8 +28,8 @@ def getEulerAngle(desiredTime: int):
         Tuple[float, float, float]: The average Euler angles (roll, pitch, yaw) in degrees.
     """
     # get data from the database
-    imu_data = getImuData(desiredTime)
-    mag_data = getMagnetometerData(desiredTime)
+    imu_data = db_interface.queryImu(desiredTime)
+    mag_data = db_interface.queryMagnetometer(desiredTime)
 
     # Ensure same number of samples
     imu_data, mag_data = equalize_list_lengths(imu_data, mag_data)
@@ -53,7 +53,7 @@ def getEulerAngle(desiredTime: int):
     avg_euler = [avg_euler[0], avg_euler[1]*-1, avg_euler[2]]
     return avg_euler
 
-def isUpsideDown(time: int = None):
+def isUpsideDown(db_interface: SqliteInterface, time: int = None):
     """ 
     Returns True if the device is upside down, False otherwise.
     Returns:
@@ -64,12 +64,12 @@ def isUpsideDown(time: int = None):
         time = int(time.time()*ONE_SECOND) - HALF_SECOND
 
     # get data from the database
-    imu_data = getImuData(time)
+    imu_data = db_interface.queryImu(time)
     imu_ave = calculateAttributesAverage(imu_data)
     # check if the device is upside down
     return imu_ave['az'] < ACCEL_Z_UPSIDE_DOWN_THRESHOLD
 
-def getGNSSHeading(time: int = None):
+def getGNSSHeading(db_interface: SqliteInterface, time: int = None):
     """
     Returns the GNSS heading in degrees.
     Returns:
@@ -80,14 +80,14 @@ def getGNSSHeading(time: int = None):
         time = int(time.time()*ONE_SECOND) - HALF_SECOND
 
     # get data from the database
-    gnss_data = getGnssData(time)
+    gnss_data = db_interface.queryGnss(time)
     current_heading = gnss_data[0].heading
     current_heading_accuracy = gnss_data[0].headingAccuracy
     current_position = (gnss_data[0].latitude, gnss_data[0].longitude)
     if current_heading_accuracy < GNSS_HEADING_ACCURACY_THRESHOLD:
         return current_heading
     else:
-        older_gnss_data = getGnssData(time-QUARTER_SECOND,THIRTY_SECONDS)
+        older_gnss_data = db_interface.queryGnss(time-QUARTER_SECOND,THIRTY_SECONDS)
         for data in older_gnss_data:
             old_position = (data.latitude, data.longitude)
             distance = geodesic(current_position, old_position).meters
@@ -96,7 +96,7 @@ def getGNSSHeading(time: int = None):
                 return data.heading
     return None
 
-def getDashcamToVehicleHeadingOffset(time: int = None, pastRange: int= None):
+def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, time: int = None, pastRange: int= None):
     """
     Returns the yaw offset between the dashcam and vehicle in degrees.
     Returns:
@@ -111,9 +111,9 @@ def getDashcamToVehicleHeadingOffset(time: int = None, pastRange: int= None):
         pastRange = TEN_MINUTES
 
     # get data from the database
-    imu_data = getImuData(time, pastRange, ASC)
-    mag_data = getMagnetometerData(time, pastRange, ASC)
-    gnss_data = getGnssData(time, pastRange, ASC)
+    imu_data = db_interface.queryImu(time, pastRange, ASC)
+    mag_data = db_interface.queryMagnetometer(time, pastRange, ASC)
+    gnss_data = db_interface.queryGnss(time, pastRange, ASC)
 
     # Extract the data from the objects
     acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_time = extractAndSmoothImuData(imu_data)
@@ -183,7 +183,7 @@ def getDashcamToVehicleHeadingOffset(time: int = None, pastRange: int= None):
     heading_diff = []
     for i in range(len(headingAccuracy)):
         if headingAccuracy[i] < GNSS_HEADING_ACCURACY_THRESHOLD:
-            heading_diff.append((heading[i] - fused_heading[i] + 180) % 360 - 180)
+            heading_diff.append((fused_heading[i] - heading[i] + 180) % 360 - 180)
 
     heading_diff_mean = np.mean(heading_diff)
     print(f"Mean heading difference: {heading_diff_mean}")

@@ -63,15 +63,13 @@ class GNSSData():
     
     def getGdop(self):
         return self.gdop
-    
-
 
 class SqliteInterface:
-    def __init__(self) -> None:
-        self.connection = sqlite3.connect(DATA_LOGGER_PATH)
+    def __init__(self, data_logger_path: str = DATA_LOGGER_PATH) -> None:
+        self.connection = sqlite3.connect(data_logger_path)
         self.cursor = self.connection.cursor()
 
-    def queryImu(self, desiredTime: int, pastRange: int, order: str):
+    def queryImu(self, desiredTime: int, pastRange: int = 250, order: str = DESC):
         """ 
         Queries the IMU table for accelerometer and gyroscope data for a given epoch timestamp.
         Args:
@@ -93,7 +91,7 @@ class SqliteInterface:
     
     # desiredTime is a epoch timestamp
     # pastRange is the number of seconds before desiredTime to query for defaults tp 250 which is a quarter of a second
-    def queryMagnetometer(self, desiredTime: int, pastRange: int, order: str):
+    def queryMagnetometer(self, desiredTime: int, pastRange: int = 250, order: str = DESC):
         """
         Queries the magnetometer table for magnetometer data for a given epoch timestamp.
         Args:
@@ -113,7 +111,7 @@ class SqliteInterface:
         results = [MagData(row[0], row[1], row[2], row[3]) for row in rows]
         return results
     
-    def queryGnss(self, desiredTime: int, pastRange: int, order: str):
+    def queryGnss(self, desiredTime: int, pastRange: int = 250, order: str = DESC):
         query = f'''
                     SELECT latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, system_time
                     FROM gnss 
@@ -124,14 +122,3 @@ class SqliteInterface:
         results = self.cursor.execute(query).fetchall()
         results = [GNSSData(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]) for row in results]
         return results
-
-sqliteInterface = SqliteInterface()
-
-def getImuData(desiredTime: int, pastRange: int = 250, order: str = DESC):
-    return sqliteInterface.queryImu(desiredTime, pastRange, order)
-
-def getMagnetometerData(desiredTime: int, pastRange: int = 250, order: str = DESC):
-    return sqliteInterface.queryMagnetometer(desiredTime, pastRange, order)
-
-def getGnssData(desiredTime: int, pastRange: int = 250, order: str = DESC):
-    return sqliteInterface.queryGnss(desiredTime, pastRange, order)
