@@ -1,6 +1,7 @@
 from .sqliteinterface import SqliteInterface, ASC
 from .orientation import (
     isUpsideDown, 
+    getCleanGNSSHeading,
     getDashcamToVehicleHeadingOffset,
     GNSS_LOW_SPEED_THRESHOLD,
     HEADING_DIFF_MAGNETOMETER_FLIP_THRESHOLD,

@@ -1,4 +1,5 @@
 import numpy as np
+import time
 from geopy.distance import geodesic
 
 from .sensorFusion import calculateHeading, equalize_list_lengths, convertToEuler, averageEulerAngles, orientationFLAE
@@ -53,67 +54,79 @@ def getEulerAngle(db_interface: SqliteInterface, desiredTime: int):
     avg_euler = [avg_euler[0], avg_euler[1]*-1, avg_euler[2]]
     return avg_euler
 
-def isUpsideDown(db_interface: SqliteInterface, time: int = None):
+def isUpsideDown(db_interface: SqliteInterface, current_time: int = None):
     """ 
     Returns True if the device is upside down, False otherwise.
     Returns:
         bool: True if the device is upside down, False otherwise.
     """
     # if no time given get data for ~now
-    if time is None:
-        time = int(time.time()*ONE_SECOND) - HALF_SECOND
+    if current_time is None:
+        current_time = int(time.time()*ONE_SECOND) - HALF_SECOND
 
     # get data from the database
-    imu_data = db_interface.queryImu(time)
+    imu_data = db_interface.queryImu(current_time)
     imu_ave = calculateAttributesAverage(imu_data)
     # check if the device is upside down
     return imu_ave['az'] < ACCEL_Z_UPSIDE_DOWN_THRESHOLD
 
-def getGNSSHeading(db_interface: SqliteInterface, time: int = None):
+def getCleanGNSSHeading(db_interface: SqliteInterface, current_time: int = None, pastRange: int = None):
     """
     Returns the GNSS heading in degrees.
     Returns:
         float: The GNSS heading in degrees.
     """
     # if no time given get data for ~now
-    if time is None:
-        time = int(time.time()*ONE_SECOND) - HALF_SECOND
+    if current_time is None:
+        current_time = int(time.time()*ONE_SECOND) - HALF_SECOND
 
     # get data from the database
-    gnss_data = db_interface.queryGnss(time)
-    current_heading = gnss_data[0].heading
-    current_heading_accuracy = gnss_data[0].headingAccuracy
-    current_position = (gnss_data[0].latitude, gnss_data[0].longitude)
-    if current_heading_accuracy < GNSS_HEADING_ACCURACY_THRESHOLD:
-        return current_heading
-    else:
-        older_gnss_data = db_interface.queryGnss(time-QUARTER_SECOND,THIRTY_SECONDS)
-        for data in older_gnss_data:
-            old_position = (data.latitude, data.longitude)
-            distance = geodesic(current_position, old_position).meters
-            if (data.headingAccuracy < GNSS_HEADING_ACCURACY_THRESHOLD and
-                distance < GNSS_DISTANCE_THRESHOLD):
-                return data.heading
-    return None
+    gnss_data = db_interface.queryGnss(current_time, pastRange, ASC)
+    _, _, _, _, heading, headingAccuracy, _, _, gnss_time, _ = extractGNSSData(gnss_data)
+    # go through data forwards to find all good headings
+    forward_loop = []
+    for i in range(len(headingAccuracy)):
+        if headingAccuracy[i] < GNSS_HEADING_ACCURACY_THRESHOLD:
+            forward_loop.append(heading[i])
+        else:
+            forward_loop.append(forward_loop[-1] if forward_loop else None)
+    # go through data backwards to find all good headings
+    backward_loop = []
+    # Corrected range for backwards iteration
+    for i in range(len(headingAccuracy)-1, -1, -1):
+        if headingAccuracy[i] < GNSS_HEADING_ACCURACY_THRESHOLD:
+            backward_loop.insert(0, heading[i])
+        else:
+            # Ensuring to insert a default or last valid item at the start
+            backward_loop.insert(0, backward_loop[0] if backward_loop else None)
+    # correct the forward loop with the backward loop
+    for i in range(len(forward_loop)):
+        if forward_loop[i] == None:
+            if backward_loop[i] != None:
+                forward_loop[i] = backward_loop[i]
+            else:
+                forward_loop[i] = heading[i]
 
-def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, time: int = None, pastRange: int= None):
+    return heading, forward_loop, gnss_time
+
+def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time: int = None, pastRange: int= None):
     """
     Returns the yaw offset between the dashcam and vehicle in degrees.
     Returns:
         float: The yaw offset between the dashcam and vehicle in degrees.
     """
     # if no time given get data for ~now
-    if time is None:
-        time = int(time.time()*ONE_SECOND) - HALF_SECOND
+    if current_time is None:
+        current_time = int(time.time()*ONE_SECOND) - HALF_SECOND
 
     # if no pastRange given get data for 7 minutes
     if pastRange is None:
         pastRange = TEN_MINUTES
 
     # get data from the database
-    imu_data = db_interface.queryImu(time, pastRange, ASC)
-    mag_data = db_interface.queryMagnetometer(time, pastRange, ASC)
-    gnss_data = db_interface.queryGnss(time, pastRange, ASC)
+    imu_data = db_interface.queryImu(current_time, pastRange, ASC)
+    mag_data = db_interface.queryMagnetometer(current_time, pastRange, ASC)
+    gnss_data = db_interface.queryGnss(current_time, pastRange, ASC)
 
     # Extract the data from the objects
     acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_time = extractAndSmoothImuData(imu_data)
