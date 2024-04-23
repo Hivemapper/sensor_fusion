@@ -83,31 +83,33 @@ def getCleanGNSSHeading(db_interface: SqliteInterface, current_time: int = None,
     # get data from the database
     gnss_data = db_interface.queryGnss(current_time, pastRange, ASC)
     _, _, _, _, heading, headingAccuracy, _, _, gnss_time, _ = extractGNSSData(gnss_data)
-    # go through data forwards to find all good headings
-    forward_loop = []
-    for i in range(len(headingAccuracy)):
-        if headingAccuracy[i] < GNSS_HEADING_ACCURACY_THRESHOLD:
-            forward_loop.append(heading[i])
-        else:
-            forward_loop.append(forward_loop[-1] if forward_loop else None)
-    # go through data backwards to find all good headings
-    backward_loop = []
-    # Corrected range for backwards iteration
-    for i in range(len(headingAccuracy)-1, -1, -1):
-        if headingAccuracy[i] < GNSS_HEADING_ACCURACY_THRESHOLD:
-            backward_loop.insert(0, heading[i])
-        else:
-            # Ensuring to insert a default or last valid item at the start
-            backward_loop.insert(0, backward_loop[0] if backward_loop else None)
+    # setup for heading correction
+    dataLength = len(heading)
+    forward_loop = [None]*dataLength
+    backward_loop = [None]*dataLength
+    last_forward_good = None
+    last_backward_good = None
+     # iterate through data forward and backward to get the best heading
+    for i in range(dataLength):
+        forward_index = i
+        backward_index = dataLength - 1 - i
+        # Handle forward direction
+        if headingAccuracy[forward_index] < GNSS_HEADING_ACCURACY_THRESHOLD:
+            last_forward_good = heading[forward_index]
+        forward_loop[forward_index] = last_forward_good
+        # Handle backward direction
+        if headingAccuracy[backward_index] < GNSS_HEADING_ACCURACY_THRESHOLD:
+            last_backward_good = heading[backward_index]
+        backward_loop[backward_index] = last_backward_good
     # correct the forward loop with the backward loop
-    for i in range(len(forward_loop)):
+    for i in range(dataLength):
         if forward_loop[i] == None:
             if backward_loop[i] != None:
                 forward_loop[i] = backward_loop[i]
             else:
                 forward_loop[i] = heading[i]
 
-    return heading, forward_loop, gnss_time
+    return forward_loop, gnss_time
 
 def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time: int = None, pastRange: int= None):
     """
