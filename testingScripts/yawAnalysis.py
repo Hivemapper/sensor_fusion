@@ -13,14 +13,11 @@ from fusion import (
     extractAndSmoothMagData,
     extractGNSSData,
     calculateHeading, 
-    calculateAverageFrequency, 
-    calculateRollingAverage, 
     calibrate_mag, 
-    convertTimeToEpoch,
+    getCleanGNSSHeading,
     GNSS_LOW_SPEED_THRESHOLD,
     HEADING_DIFF_MAGNETOMETER_FLIP_THRESHOLD,
     GNSS_HEADING_ACCURACY_THRESHOLD,
-    GNSS_DISTANCE_THRESHOLD,
     ASC,
 )
 
@@ -150,10 +147,12 @@ if __name__ == "__main__":
     # used to translate the fused heading to the correct range
     fused_heading = [heading_val + 360 if heading_val < 0 else heading_val for heading_val in fused_heading]
 
-    # check last heading diff to make decision
-    if abs(heading[-1] - fused_heading[-1]) > HEADING_DIFF_MAGNETOMETER_FLIP_THRESHOLD:
-        fused_heading = [heading_val - 180 for heading_val in fused_heading]
+    # check last heading diff to make decision to flip the heading
+    if abs(fused_heading[-1] - heading[-1]) > HEADING_DIFF_MAGNETOMETER_FLIP_THRESHOLD:
+            # handle wrap around and shift by 180 degrees
+            fused_heading = [(heading_val - 180) % 360 for heading_val in fused_heading]
 
+    cleanHeading,_ = getCleanGNSSHeading(sql_db, 0,0)
     # Calculate the difference between the GNSS heading and the fused heading 
     heading_diff = []
     time = []
@@ -174,11 +173,12 @@ if __name__ == "__main__":
 
 
     plot_signal_over_time(number_of_points, mean_diff, 'Heading Diff Mean')
+    plot_signal_over_time(time, heading_diff, 'Heading Diff')
+
+
 
     # plot_path = os.path.join(dir_path, drive, f'EKF_plot_testing_{heading_diff}.png')
-    # fused_heading_continuous = make_headings_continuous(fused_heading)
-    # heading_continuous = make_headings_continuous(heading)
-    plot_signals_over_time(gnss_time, heading, fused_heading, 'GNSS Heading', 'Fused Heading', None)
+    plot_signals_over_time(gnss_time, cleanHeading, fused_heading, 'Clean GNSS Heading', 'Fused Heading', None)
     plt.show()
 
     # print("Creating map...")

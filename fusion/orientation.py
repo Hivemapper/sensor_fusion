@@ -18,7 +18,6 @@ ACCEL_Z_UPSIDE_DOWN_THRESHOLD = -0.1
 GNSS_LOW_SPEED_THRESHOLD = 0.1
 HEADING_DIFF_MAGNETOMETER_FLIP_THRESHOLD = 100 #in degreed
 GNSS_HEADING_ACCURACY_THRESHOLD = 3.0
-GNSS_DISTANCE_THRESHOLD = 1.5 # meters
 
 def getEulerAngle(db_interface: SqliteInterface, desiredTime: int):
     """ 
@@ -192,8 +191,9 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time
 
     # used when the heading is off by 180 degrees
     # check last heading diff to make decision
-    if abs(heading[-1] - fused_heading[-1]) > HEADING_DIFF_MAGNETOMETER_FLIP_THRESHOLD:
-        fused_heading = [heading_val - 180 for heading_val in fused_heading]
+    if abs(fused_heading[-1] - heading[-1]) > HEADING_DIFF_MAGNETOMETER_FLIP_THRESHOLD:
+            # handle wrap around and shift by 180 degrees
+            fused_heading = [(heading_val - 180) % 360 for heading_val in fused_heading]
 
     heading_diff = []
     for i in range(len(headingAccuracy)):

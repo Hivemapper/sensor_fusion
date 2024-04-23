@@ -29,8 +29,10 @@ if __name__ == "__main__":
     data_logger_path = os.path.join(dir_path, drive, 'data-logger.v1.4.4.db')
     print(f"Loading data from {data_logger_path}")
     sql_db = SqliteInterface(data_logger_path)
-    heading, cleanHeading, time = getCleanGNSSHeading(sql_db, 1713487816514 + 1000)   
+    cleanHeading, time = getCleanGNSSHeading(sql_db, 1713487816514 + 1000, 1713487816514 - 1713486814108 - 5000)
+    print(time[0])
+    print(time[-1])   
 
-    plot_signals_over_time(time, heading, cleanHeading, 'Heading', 'Forward Loop', None)
-    plt.show()
+    # plot_signals_over_time(time, heading, cleanHeading, 'Heading', 'Forward Loop', None)
+    # plt.show()
     
