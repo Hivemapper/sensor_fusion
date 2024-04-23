@@ -1,4 +1,5 @@
 import numpy as np
+import time
 from geopy.distance import geodesic
 
 from .sensorFusion import calculateHeading, equalize_list_lengths, convertToEuler, averageEulerAngles, orientationFLAE
@@ -17,7 +18,6 @@ ACCEL_Z_UPSIDE_DOWN_THRESHOLD = -0.1
 GNSS_LOW_SPEED_THRESHOLD = 0.1
 HEADING_DIFF_MAGNETOMETER_FLIP_THRESHOLD = 100 #in degreed
 GNSS_HEADING_ACCURACY_THRESHOLD = 3.0
-GNSS_DISTANCE_THRESHOLD = 1.5 # meters
 
 def getEulerAngle(db_interface: SqliteInterface, desiredTime: int):
     """ 
@@ -53,67 +53,81 @@ def getEulerAngle(db_interface: SqliteInterface, desiredTime: int):
     avg_euler = [avg_euler[0], avg_euler[1]*-1, avg_euler[2]]
     return avg_euler
 
-def isUpsideDown(db_interface: SqliteInterface, time: int = None):
+def isUpsideDown(db_interface: SqliteInterface, current_time: int = None):
     """ 
     Returns True if the device is upside down, False otherwise.
     Returns:
         bool: True if the device is upside down, False otherwise.
     """
     # if no time given get data for ~now
-    if time is None:
-        time = int(time.time()*ONE_SECOND) - HALF_SECOND
+    if current_time is None:
+        current_time = int(time.time()*ONE_SECOND) - HALF_SECOND
 
     # get data from the database
-    imu_data = db_interface.queryImu(time)
+    imu_data = db_interface.queryImu(current_time)
     imu_ave = calculateAttributesAverage(imu_data)
     # check if the device is upside down
     return imu_ave['az'] < ACCEL_Z_UPSIDE_DOWN_THRESHOLD
 
-def getGNSSHeading(db_interface: SqliteInterface, time: int = None):
+def getCleanGNSSHeading(db_interface: SqliteInterface, current_time: int = None, pastRange: int = None):
     """
     Returns the GNSS heading in degrees.
     Returns:
         float: The GNSS heading in degrees.
     """
     # if no time given get data for ~now
-    if time is None:
-        time = int(time.time()*ONE_SECOND) - HALF_SECOND
+    if current_time is None:
+        current_time = int(time.time()*ONE_SECOND) - HALF_SECOND
 
     # get data from the database
-    gnss_data = db_interface.queryGnss(time)
-    current_heading = gnss_data[0].heading
-    current_heading_accuracy = gnss_data[0].headingAccuracy
-    current_position = (gnss_data[0].latitude, gnss_data[0].longitude)
-    if current_heading_accuracy < GNSS_HEADING_ACCURACY_THRESHOLD:
-        return current_heading
-    else:
-        older_gnss_data = db_interface.queryGnss(time-QUARTER_SECOND,THIRTY_SECONDS)
-        for data in older_gnss_data:
-            old_position = (data.latitude, data.longitude)
-            distance = geodesic(current_position, old_position).meters
-            if (data.headingAccuracy < GNSS_HEADING_ACCURACY_THRESHOLD and
-                distance < GNSS_DISTANCE_THRESHOLD):
-                return data.heading
-    return None
+    gnss_data = db_interface.queryGnss(current_time, pastRange, ASC)
+    _, _, _, _, heading, headingAccuracy, _, _, gnss_time, _ = extractGNSSData(gnss_data)
+    # setup for heading correction
+    dataLength = len(heading)
+    forward_loop = [None]*dataLength
+    backward_loop = [None]*dataLength
+    last_forward_good = None
+    last_backward_good = None
+     # iterate through data forward and backward to get the best heading
+    for i in range(dataLength):
+        forward_index = i
+        backward_index = dataLength - 1 - i
+        # Handle forward direction
+        if headingAccuracy[forward_index] < GNSS_HEADING_ACCURACY_THRESHOLD:
+            last_forward_good = heading[forward_index]
+        forward_loop[forward_index] = last_forward_good
+        # Handle backward direction
+        if headingAccuracy[backward_index] < GNSS_HEADING_ACCURACY_THRESHOLD:
+            last_backward_good = heading[backward_index]
+        backward_loop[backward_index] = last_backward_good
+    # correct the forward loop with the backward loop
+    for i in range(dataLength):
+        if forward_loop[i] == None:
+            if backward_loop[i] != None:
+                forward_loop[i] = backward_loop[i]
+            else:
+                forward_loop[i] = heading[i]
 
-def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, time: int = None, pastRange: int= None):
+    return forward_loop, gnss_time
+
+def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time: int = None, pastRange: int= None):
     """
     Returns the yaw offset between the dashcam and vehicle in degrees.
     Returns:
         float: The yaw offset between the dashcam and vehicle in degrees.
     """
     # if no time given get data for ~now
-    if time is None:
-        time = int(time.time()*ONE_SECOND) - HALF_SECOND
+    if current_time is None:
+        current_time = int(time.time()*ONE_SECOND) - HALF_SECOND
 
     # if no pastRange given get data for 7 minutes
     if pastRange is None:
         pastRange = TEN_MINUTES
 
     # get data from the database
-    imu_data = db_interface.queryImu(time, pastRange, ASC)
-    mag_data = db_interface.queryMagnetometer(time, pastRange, ASC)
-    gnss_data = db_interface.queryGnss(time, pastRange, ASC)
+    imu_data = db_interface.queryImu(current_time, pastRange, ASC)
+    mag_data = db_interface.queryMagnetometer(current_time, pastRange, ASC)
+    gnss_data = db_interface.queryGnss(current_time, pastRange, ASC)
 
     # Extract the data from the objects
     acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_time = extractAndSmoothImuData(imu_data)
@@ -177,8 +191,9 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, time: int = 
 
     # used when the heading is off by 180 degrees
     # check last heading diff to make decision
-    if abs(heading[-1] - fused_heading[-1]) > HEADING_DIFF_MAGNETOMETER_FLIP_THRESHOLD:
-        fused_heading = [heading_val - 180 for heading_val in fused_heading]
+    if abs(fused_heading[-1] - heading[-1]) > HEADING_DIFF_MAGNETOMETER_FLIP_THRESHOLD:
+            # handle wrap around and shift by 180 degrees
+            fused_heading = [(heading_val - 180) % 360 for heading_val in fused_heading]
 
     heading_diff = []
     for i in range(len(headingAccuracy)):
