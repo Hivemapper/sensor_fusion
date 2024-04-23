@@ -7,9 +7,18 @@ from matplotlib.colors import Normalize
 from matplotlib.cm import viridis
 from PIL import Image
 import numpy as np
+from pyproj import Proj, Transformer, Geod
+
+# Define projections
+wgs84 = Proj(proj='latlong', datum='WGS84')
+cartesian = Proj(proj='geocent', datum='WGS84')
+
+# Create a transformer object from WGS84 to Cartesian (geocentric)
+forward_transformer = Transformer.from_proj(wgs84, cartesian, always_xy=True)
+reverse_transformer = Transformer.from_proj(cartesian, wgs84, always_xy=True)
 
 
-def plot_points_on_map(data):
+def plot_points_on_map(data, map_path='map.html'):
     """
     Plot points on a map using Folium. Each point has a latitude, longitude, and label.
     Points with the same label are plotted in the same named color.
@@ -25,7 +34,7 @@ def plot_points_on_map(data):
     #                 'lightred', 'beige', 'darkblue', 'darkgreen', 'cadetblue',
     #                 'darkpurple', 'white', 'pink', 'lightblue', 'lightgreen',
     #                 'gray', 'black', 'lightgray']
-    color_map = {'stop-sign': 'red', 'speed-sign': 'blue', 'turn-rules-sign': 'green', 'camera': 'gray'}
+    color_map = {'stop-sign': 'red', 'speed-sign': 'blue', 'turn-rules-sign': 'green', 'camera': 'gray', 'ave-sign': 'purple'}
 
     # Create a base map
     map_center = [data[0]['lat'], data[0]['lon']] if data else [0, 0]
@@ -37,10 +46,20 @@ def plot_points_on_map(data):
             folium.CircleMarker(
                 location=[item['lat'], item['lon']],
                 radius=5,
-                popup=f"{item['label']}_{item['frameId']}",
+                popup=f"{item['label']}_{item['frame_id']}",
                 color=color_map[item['label']],
                 fill=True,
                 fill_color=color_map[item['label']],
+                fill_opacity=0.7
+            ).add_to(map)
+        elif 'ave' in item['label']:
+            folium.CircleMarker(
+                location=[item['lat'], item['lon']],
+                radius=5,
+                popup=f"{item['label']}",
+                color=color_map['ave-sign'],
+                fill=True,
+                fill_color=color_map['ave-sign'],
                 fill_opacity=0.7
             ).add_to(map)
         else:
@@ -54,7 +73,7 @@ def plot_points_on_map(data):
                 fill_opacity=0.7
             ).add_to(map)
 
-    map.save('map.html')
+    map.save(map_path)
 
 def make_confidence_heatmap(width, height, cellSize, maxHeatValue, minHeatValue):
         # Create an empty heatmap array
@@ -169,82 +188,217 @@ def overlay_heatmap_on_image(image_path, heatmap):
 
 
 def meters_to_latlon(distance, lat, lon, heading):
-    # Earth's radius, sphere
-    R = 6378137
-
     # Convert heading to radians
     bearing = math.radians(heading)
 
-    # Convert latitude and longitude to radians
-    lat1 = math.radians(lat)
-    lon1 = math.radians(lon)
+    # Convert the initial latitude and longitude to cartesian coordinates (meters)
+    x, y = forward_transformer.transform(lon, lat)
+    
+    # Compute new coordinates based on distance and bearing
+    delta_x = distance * math.sin(bearing)
+    delta_y = distance * math.cos(bearing)
+    new_x = x + delta_x
+    new_y = y + delta_y
+    
+    # Convert back to latitude and longitude
+    new_lon, new_lat = reverse_transformer.transform(new_x, new_y)
 
-    # Calculate new latitude and longitude
-    lat2 = math.asin(math.sin(lat1) * math.cos(distance / R) +
-                     math.cos(lat1) * math.sin(distance / R) * math.cos(bearing))
+    return new_lat, new_lon
 
-    lon2 = lon1 + math.atan2(math.sin(bearing) * math.sin(distance / R) * math.cos(lat1),
-                             math.cos(distance / R) - math.sin(lat1) * math.sin(lat2))
+def calculate_distance(lat1, lon1, lat2, lon2):
+    # Define the ellipsoid for WGS 84 (which is the default)
+    geod = Geod(ellps='WGS84')
+    
+    # Calculate the geodesic distance between the two points
+    _, _, distance = geod.inv(lon1, lat1, lon2, lat2)
+    
+    return distance
 
-    # Convert back to degrees
-    lat2 = math.degrees(lat2)
-    lon2 = math.degrees(lon2)
+def average_coordinates(detections):
 
-    return lat2, lon2
+    num_detections = len(detections)
+    # Prepare detections
+    for d in detections:
+        # Convert the coordinates to Cartesian
+        longitude = d['sign_lon']
+        latitude = d['sign_lat']
+        altitude = 0.0
+        x, y, z = forward_transformer.transform(longitude, latitude, altitude)
+        d['x'] = x
+        d['y'] = y
+        d['z'] = z
+
+    x_coords = []
+    y_coords = []
+    z_coords = []
+    for d in detections:
+        x_coords.append(d['x'])
+        y_coords.append(d['y'])
+        z_coords.append(d['z'])
+
+    sum_x = sum(x_coords)
+    sum_y = sum(y_coords)
+    sum_z = sum(z_coords)
+    
+    # Calculating the weighted average coordinates
+    average_x = sum_x / num_detections
+    average_y = sum_y / num_detections
+    average_z = sum_z / num_detections
+
+    # Convert the average coordinates back to geographic
+    average_lon, average_lat, average_alt = reverse_transformer.transform(average_x, average_y, average_z)
+
+    return  average_lat, average_lon, average_alt
 
 
 if __name__ == "__main__": 
     # read the json file
-    with open('/Users/rogerberman/sensor-fusion/testingScripts/features.json') as f:
+    with open('/Users/rogerberman/sensor-fusion/testData/features_minnesota_st.json') as f:
         data = json.load(f)
 
+    # pre-process the data
     filtered_data = []
     for detection in data:
         if detection['eph'] < 10:
             filtered_data.append(detection)
     print(f"Number of detections: {len(filtered_data)}")
-    # print(filtered_data[0])
 
+    # original detections in filtered_data:
     locations = []
     for detection in filtered_data:
         cam_dict = {}
         cam_dict['lat'] = detection['cam_lat']
         cam_dict['lon'] = detection['cam_lon']
         cam_dict['label'] = "camera"
-        cam_dict['frameId'] = detection['frameId']
+        cam_dict['frame_id'] = detection['frame_id']
         locations.append(cam_dict)
         sign_dict = {}
         sign_dict['lat'] = detection['sign_lat']
         sign_dict['lon'] = detection['sign_lon']
         sign_dict['label'] = detection['label']
-        sign_dict['frameId'] = detection['frameId']
+        sign_dict['frame_id'] = detection['frame_id']
         sign_dict['distance'] = detection['distance']
         locations.append(sign_dict)
 
     # for location in locations:
     #     print(location)
-    # plot_points_on_map(locations)
+    plot_points_on_map(locations)
 
-    width, height = 640, 480
-    cell_size = 10
-    max_heat_value = 1
-    min_heat_value = 0.5
-    heatmap = make_confidence_heatmap(width, height, cell_size, max_heat_value, min_heat_value)
-    # print(heatmap)
-    # visualize_confidence_heatmap(heatmap, cell_size)
-    frame_id = 1689
-    image_path = f"/Users/rogerberman/Downloads/frames_with_depth/{frame_id}_0.jpg"
-    overlay_heatmap_on_image(image_path, heatmap)
+    # width, height = 640, 480
+    # cell_size = 10
+    # max_heat_value = 1
+    # min_heat_value = 0.5
+    # heatmap = make_confidence_heatmap(width, height, cell_size, max_heat_value, min_heat_value)
 
+
+    # sort the detections into groups
+    groups_found = {}
     for detection in filtered_data:
-        print(f"FrameId: {detection['frameId']}, Confidence: {get_confidence_heatmap_average(heatmap, detection['box'])}" )
+        if detection['label'] not in groups_found:
+            groups_found[detection['label']] = [[detection]]
+            # print(groups_found)
+        else:
+            latest_group = groups_found[detection['label']][-1]
+            latest_group_len = len(latest_group)
+            # print(latest_group)
+            if detection['frame_id'] - latest_group[-1]['frame_id'] < 5 - latest_group_len:
+                groups_found[detection['label']][-1].append(detection)
+            else:
+                groups_found[detection['label']].append([detection])
+
+
+    # Find average coordinates for each group
+    ave_locations = []
+    for label in groups_found:
+        for detections in groups_found[label]:
+            ave_detection = {}
+            if len(detections) == 0:
+                continue
+            if len(detections) == 1:
+                ave_detection['lat'] = detections[0]['sign_lat']
+                ave_detection['lon'] = detections[0]['sign_lon']
+                ave_detection['label'] = 'ave_'+detections[0]['label']
+                ave_locations.append(ave_detection)
+            else:
+                lat, lon, alt = average_coordinates(detections)
+                ave_detection['lat'] = lat
+                ave_detection['lon'] = lon
+                ave_detection['label'] = 'ave_'+detections[0]['label']
+                ave_locations.append(ave_detection)
+    # print(ave_locations)
+
+    combined_locations = locations + ave_locations
+    plot_points_on_map(combined_locations, 'combined_map.html')
+
+    # First problem to solve: Identify detection groups
+    # for group in groups:
+    #     print(f"Group: {group}")
+    #     for i in group:
+    #         for detection in filtered_data:
+    #             if detection['frame_id'] == i:
+    #                 print(f"Frame: {i}, Label: {detection['label']}, Distance: {detection['distance']}, Time: {detection['timestamp']}")
+
+    # initial_time = filtered_data[0]['timestamp']
+    # for detection in filtered_data:
+    #     print(f"Frame: {detection['frame_id']}, Label: {detection['label']}, Distance: {detection['distance']}, Time: {detection['timestamp'] - initial_time}")
+
+    groups_found = {}
+    for detection in filtered_data:
+        if detection['label'] not in groups_found:
+            groups_found[detection['label']] = [[detection]]
+            # print(groups_found)
+        else:
+            latest_group = groups_found[detection['label']][-1]
+            latest_group_len = len(latest_group)
+            # print(latest_group)
+            if detection['frame_id'] - latest_group[-1]['frame_id'] < 5 - latest_group_len:
+                groups_found[detection['label']][-1].append(detection)
+            else:
+                groups_found[detection['label']].append([detection])
+
+    for group in groups_found:
+        print(f"Label: {group}")
+        for i in range(len(groups_found[group])):
+            print(f"Group {i+1}")
+            for detection in groups_found[group][i]:
+                print(f"Frame: {detection['frame_id']}, Distance: {detection['distance']}, Time: {detection['timestamp']}")
+            
+
+
+
+    
+
+
+    # Cases:
+    # 1. Single detection
+    #   - Take the detection as is
+    #   - Potentially to apply distance correction based on confidence heatmap (Distance based)
+    # 2. Two detections
+    #   - Take the average of the two detections
+    #   - Potentially to apply distance weight based on confidence heatmap (Distance based)
+    # 3. Three or more detections
+    #   - Find cluster by distance
+    #   - Weight detections based on distance
+
     
 
 
 
 
-    # given I have a heat map of the image
-    # i want to create a function where i can input a bounding box and get the average heat value of the bounding box
+    # Applied confidence heatmap to the detections (Experimental)
     
-    # bbox input is top left corner and bottom right corner
-    # bbox = [x1, y1, x2, y2]
+
+    # plot_points_on_map(mod_locations, 'mod_map.html')
+
+
+
+
+
+
+
+
+# print(heatmap)
+    # visualize_confidence_heatmap(heatmap, cell_size)
+    # frame_id = 1689
+    # image_path = f"/Users/rogerberman/Downloads/frames_with_depth/{frame_id}_0.jpg"
+    # overlay_heatmap_on_image(image_path, heatmap)
