@@ -115,6 +115,8 @@ class SqliteInterface:
         query = f'''
                     SELECT latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, system_time
                     FROM gnss 
+                    WHERE system_time > \'{datetime.fromtimestamp((desiredTime - pastRange)/1000.0)}\'
+                    AND system_time <= \'{datetime.fromtimestamp(desiredTime/1000.0)}\'
                     ORDER BY system_time {order}
                 '''
         results = self.cursor.execute(query).fetchall()
