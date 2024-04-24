@@ -1,3 +1,6 @@
+import sys
+sys.path.insert(0, '/Users/rogerberman/sensor-fusion')  # Add the project root to the Python path
+
 import folium
 import json
 import math
@@ -8,6 +11,7 @@ from matplotlib.cm import viridis
 from PIL import Image
 import numpy as np
 from pyproj import Proj, Transformer, Geod
+from detections import merge_guesses
 
 # Define projections
 wgs84 = Proj(proj='latlong', datum='WGS84')
@@ -205,14 +209,38 @@ def meters_to_latlon(distance, lat, lon, heading):
 
     return new_lat, new_lon
 
-def calculate_distance(lat1, lon1, lat2, lon2):
+def calculate_distance(point1, point2):
     # Define the ellipsoid for WGS 84 (which is the default)
     geod = Geod(ellps='WGS84')
-    
+    lat1, lon1 = point1
+    lat2, lon2 = point2
     # Calculate the geodesic distance between the two points
     _, _, distance = geod.inv(lon1, lat1, lon2, lat2)
     
     return distance
+
+def k_means(coordinates, num_clusters=1, distance_func=calculate_distance, max_iters=100):
+    # Initialize centroids by randomly selecting points from the dataset
+    centroids = coordinates[np.random.choice(len(coordinates), num_clusters, replace=False)]
+
+    for _ in range(max_iters):
+        # Assign each point to the closest centroid
+        clusters = {i: [] for i in range(num_clusters)}
+        for x in coordinates:
+            # Compute distance to each centroid
+            closest_centroid = np.argmin([distance_func(x, centroid) for centroid in centroids])
+            clusters[closest_centroid].append(x)
+
+        # Update centroids to be the mean of points in each cluster
+        new_centroids = np.array([np.mean(clusters[i], axis=0) for i in range(num_clusters)])
+
+        # Check if centroids have changed
+        if np.allclose(centroids, new_centroids):
+            break
+
+        centroids = new_centroids
+
+    return centroids, clusters
 
 def average_coordinates(detections):
 
@@ -249,6 +277,31 @@ def average_coordinates(detections):
     average_lon, average_lat, average_alt = reverse_transformer.transform(average_x, average_y, average_z)
 
     return  average_lat, average_lon, average_alt
+
+def find_detection_groups(detections, print_groups=False):
+    groups_found = {}
+    for detection in detections:
+        if detection['label'] not in groups_found:
+            groups_found[detection['label']] = [[detection]]
+            # print(groups_found)
+        else:
+            latest_group = groups_found[detection['label']][-1]
+            latest_group_len = len(latest_group)
+            # print(latest_group)
+            if detection['frame_id'] - latest_group[-1]['frame_id'] < 5 - latest_group_len:
+                groups_found[detection['label']][-1].append(detection)
+            else:
+                groups_found[detection['label']].append([detection])
+
+    if print_groups:
+        for group in groups_found:
+            print(f"Label: {group}")
+            for i in range(len(groups_found[group])):
+                print(f"Group {i+1}")
+                for detection in groups_found[group][i]:
+                    print(f"Frame: {detection['frame_id']}, Distance: {detection['distance']}, Time: {detection['timestamp']}")
+
+    return groups_found
 
 
 if __name__ == "__main__": 
@@ -291,77 +344,16 @@ if __name__ == "__main__":
     # heatmap = make_confidence_heatmap(width, height, cell_size, max_heat_value, min_heat_value)
 
 
-    # sort the detections into groups
-    groups_found = {}
-    for detection in filtered_data:
-        if detection['label'] not in groups_found:
-            groups_found[detection['label']] = [[detection]]
-            # print(groups_found)
-        else:
-            latest_group = groups_found[detection['label']][-1]
-            latest_group_len = len(latest_group)
-            # print(latest_group)
-            if detection['frame_id'] - latest_group[-1]['frame_id'] < 5 - latest_group_len:
-                groups_found[detection['label']][-1].append(detection)
-            else:
-                groups_found[detection['label']].append([detection])
+    ave_locations = merge_guesses(filtered_data)
+    for location in ave_locations:
+        location['label'] = 'ave-'+location['label']
+    print(ave_locations)
 
-
-    # Find average coordinates for each group
-    ave_locations = []
-    for label in groups_found:
-        for detections in groups_found[label]:
-            ave_detection = {}
-            if len(detections) == 0:
-                continue
-            if len(detections) == 1:
-                ave_detection['lat'] = detections[0]['sign_lat']
-                ave_detection['lon'] = detections[0]['sign_lon']
-                ave_detection['label'] = 'ave_'+detections[0]['label']
-                ave_locations.append(ave_detection)
-            else:
-                lat, lon, alt = average_coordinates(detections)
-                ave_detection['lat'] = lat
-                ave_detection['lon'] = lon
-                ave_detection['label'] = 'ave_'+detections[0]['label']
-                ave_locations.append(ave_detection)
-    # print(ave_locations)
 
     combined_locations = locations + ave_locations
-    plot_points_on_map(combined_locations, 'combined_map.html')
+    plot_points_on_map(combined_locations, '/Users/rogerberman/sensor-fusion/testData/combined_map.html')
 
-    # First problem to solve: Identify detection groups
-    # for group in groups:
-    #     print(f"Group: {group}")
-    #     for i in group:
-    #         for detection in filtered_data:
-    #             if detection['frame_id'] == i:
-    #                 print(f"Frame: {i}, Label: {detection['label']}, Distance: {detection['distance']}, Time: {detection['timestamp']}")
 
-    # initial_time = filtered_data[0]['timestamp']
-    # for detection in filtered_data:
-    #     print(f"Frame: {detection['frame_id']}, Label: {detection['label']}, Distance: {detection['distance']}, Time: {detection['timestamp'] - initial_time}")
-
-    groups_found = {}
-    for detection in filtered_data:
-        if detection['label'] not in groups_found:
-            groups_found[detection['label']] = [[detection]]
-            # print(groups_found)
-        else:
-            latest_group = groups_found[detection['label']][-1]
-            latest_group_len = len(latest_group)
-            # print(latest_group)
-            if detection['frame_id'] - latest_group[-1]['frame_id'] < 5 - latest_group_len:
-                groups_found[detection['label']][-1].append(detection)
-            else:
-                groups_found[detection['label']].append([detection])
-
-    for group in groups_found:
-        print(f"Label: {group}")
-        for i in range(len(groups_found[group])):
-            print(f"Group {i+1}")
-            for detection in groups_found[group][i]:
-                print(f"Frame: {detection['frame_id']}, Distance: {detection['distance']}, Time: {detection['timestamp']}")
             
 
 
