@@ -119,7 +119,8 @@ def k_means(coordinates, num_clusters=1, distance_func=calculate_distance, max_i
     # Initialize centroids by randomly selecting points from the dataset
     centroids = coordinates[np.random.choice(len(coordinates), num_clusters, replace=False)]
 
-    for _ in range(max_iters):
+    for a in range(max_iters):
+        # print(f"iteration: {a}")
         # Assign each point to the closest centroid
         clusters = {i: [] for i in range(num_clusters)}
         for x in coordinates:
@@ -131,7 +132,7 @@ def k_means(coordinates, num_clusters=1, distance_func=calculate_distance, max_i
         new_centroids = np.array([np.mean(clusters[i], axis=0) for i in range(num_clusters)])
 
         # Check if centroids have changed
-        if np.allclose(centroids, new_centroids):
+        if np.allclose(centroids, new_centroids, rtol=1e-8):
             break
 
         centroids = new_centroids
