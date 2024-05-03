@@ -2,7 +2,13 @@ import numpy as np
 import time
 from geopy.distance import geodesic
 
-from .sensorFusion import calculateHeading, equalize_list_lengths, convertToEuler, averageEulerAngles, orientationFLAE
+from .sensorFusion import(
+    calculateHeading, 
+    equalize_list_lengths, 
+    convertToEuler, 
+    averageEulerAngles, 
+    orientationFLAE
+) 
 from .sqliteinterface import SqliteInterface, ASC
 from .utils import calculateAttributesAverage, extractAndSmoothImuData, extractAndSmoothMagData, extractGNSSData
 from .ellipsoid_fit import calibrate_mag
@@ -16,7 +22,7 @@ THIRTY_SECONDS = 1000 * 30 # in millisecond epoch time
 
 ACCEL_Z_UPSIDE_DOWN_THRESHOLD = -0.1
 GNSS_LOW_SPEED_THRESHOLD = 0.1
-HEADING_DIFF_MAGNETOMETER_FLIP_THRESHOLD = 100 #in degreed
+HEADING_DIFF_MAGNETOMETER_FLIP_THRESHOLD = 140 #in degreed
 GNSS_HEADING_ACCURACY_THRESHOLD = 3.0
 
 def getEulerAngle(db_interface: SqliteInterface, desiredTime: int):
@@ -125,9 +131,12 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time
         pastRange = TEN_MINUTES
 
     # get data from the database
-    imu_data = db_interface.queryImu(current_time, pastRange, ASC)
-    mag_data = db_interface.queryMagnetometer(current_time, pastRange, ASC)
+    imu_data = db_interface.queryImuUsingRowID(current_time, pastRange, ASC)
+    mag_data = db_interface.queryMagnetometerUsingRowID(current_time, pastRange, ASC)
     gnss_data = db_interface.queryGnss(current_time, pastRange, ASC)
+    print(f"len(imu_data): {len(imu_data)}")
+    print(f"len(mag_data): {len(mag_data)}")
+    print(f"len(gnss_data): {len(gnss_data)}")
 
     # Extract the data from the objects
     acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_time = extractAndSmoothImuData(imu_data)
@@ -196,14 +205,23 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time
             fused_heading = [(heading_val - 180) % 360 for heading_val in fused_heading]
 
     heading_diff = []
+    time_diff = []
     for i in range(len(headingAccuracy)):
         if headingAccuracy[i] < GNSS_HEADING_ACCURACY_THRESHOLD:
             heading_diff.append((fused_heading[i] - heading[i] + 180) % 360 - 180)
+            time_diff.append(gnss_time[i])
+
+    step_size = 10
+    number_of_points = []
+    mean_diff = []
+    for i in range(step_size,len(heading_diff), step_size):
+        number_of_points.append(i)
+        mean_diff.append(np.mean(heading_diff[:i]))
 
     heading_diff_mean = np.mean(heading_diff)
     print(f"Mean heading difference: {heading_diff_mean}")
 
-    return heading_diff_mean
+    return heading_diff_mean, fused_heading, heading, gnss_time, heading_diff, time_diff, number_of_points, mean_diff
 
     
     

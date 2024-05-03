@@ -1,4 +1,9 @@
-from .sqliteinterface import SqliteInterface, ASC
+from .sqliteinterface import (
+    convertTimeToEpoch,
+    convertEpochToTime,
+    SqliteInterface, 
+    ASC
+)
 from .orientation import (
     isUpsideDown, 
     getCleanGNSSHeading,
@@ -11,7 +16,6 @@ from .sensorFusion import calculateHeading
 from .utils import (
     calculateAverageFrequency, 
     calculateRollingAverage, 
-    convertTimeToEpoch,
     extractAndSmoothImuData,
     extractAndSmoothMagData,
     extractGNSSData,
