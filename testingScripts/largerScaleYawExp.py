@@ -22,6 +22,40 @@ from plottingCode import plot_signal_over_time, plot_signals_over_time, create_m
 import matplotlib.pyplot as plt
 
 
+def process_db_and_visualize(dbpath: str):
+    print(f"Loading data from {dbpath}")
+    sql_db = SqliteInterface(dbpath)
+    gnss_min_time, gnss_max_time = sql_db.get_min_max_system_time('gnss')
+    imu_min_time, imu_max_time = sql_db.get_min_max_system_time('imu')
+    mag_min_time, mag_max_time = sql_db.get_min_max_system_time('magnetometer')
+    # convert all to epoch
+    epoch_gnss_min_time = convertTimeToEpoch(gnss_min_time)
+    epoch_gnss_max_time = convertTimeToEpoch(gnss_max_time)
+    epoch_imu_min_time = convertTimeToEpoch(imu_min_time)
+    epoch_imu_max_time = convertTimeToEpoch(imu_max_time)
+    epoch_mag_min_time = convertTimeToEpoch(mag_min_time)
+    epoch_mag_max_time = convertTimeToEpoch(mag_max_time)
+    # get the max min times
+    min_time = min(epoch_gnss_min_time, epoch_imu_min_time, epoch_mag_min_time)
+    max_time = max(epoch_gnss_max_time, epoch_imu_max_time, epoch_mag_max_time)
+    total_time = max_time - min_time 
+    converted_total_time = convertEpochToTime(total_time)
+    print(f"Total time: {converted_total_time}")
+
+    current_time = max_time
+    pastRange = current_time - min_time
+    # print(f"Current time: {current_time}, Past range: {pastRange}")
+    heading_diff_mean, fused_heading, clean_gnss_heading, gnss_time, heading_diff, number_of_points, mean_diff = getDashcamToVehicleHeadingOffset(
+        sql_db, 
+        current_time=current_time, 
+        pastRange=pastRange, 
+    )
+    plot_signal_over_time(number_of_points, mean_diff, 'Clean Heading Diff Mean')
+    plot_signal_over_time(gnss_time, heading_diff, 'Clean Heading Diff')
+    plot_signals_over_time(gnss_time, clean_gnss_heading, fused_heading, 'Clean GNSS Heading', 'Fused Heading')
+    plt.show()
+
+
 
 if __name__ == "__main__":
     # Load data and filter data
@@ -41,31 +75,10 @@ if __name__ == "__main__":
     #                         drives[user].append(file_path)
 
 
-    # for user in drives:
+    # # for user in drives:
     #     for drive_path in drives[user]:
     #         try:
-    #             sql_db = SqliteInterface(drive_path)
-    #             print(f"Drive: {drive_path}")
-    #             gnss_min_time, gnss_max_time = sql_db.get_min_max_system_time('gnss')
-    #             imu_min_time, imu_max_time = sql_db.get_min_max_system_time('imu')
-    #             mag_min_time, mag_max_time = sql_db.get_min_max_system_time('magnetometer')
-    #             print(f"Min time: {gnss_min_time}, Max time: {gnss_max_time}")
-    #             print(f"Min time: {imu_min_time}, Max time: {imu_max_time}")
-    #             print(f"Min time: {mag_min_time}, Max time: {mag_max_time}")
-    #             # Combine all times into a single list
-    #             start_times = [
-    #                 gnss_min_time, 
-    #                 imu_min_time,  
-    #                 mag_min_time,
-    #             ]
-    #             end_times = [
-    #                 gnss_max_time, 
-    #                 imu_max_time, 
-    #                 mag_max_time, 
-    #             ]
-    #             min_time = min(start_times)
-    #             max_time = max(end_times)
-    #             print(f"Min time: {min_time}, Max time: {max_time}")
+    #             process_db_and_visualize(drive_path)
     #         except Exception as e:
     #             print(f"Error: {e}")
 
@@ -78,35 +91,12 @@ if __name__ == "__main__":
     # past range
 
     old_rive_dir = '/Users/rogerberman/dev_ground/YawFusionDrives'
-    drive = 'drive1'
+    drive = 'drive3'
     data_logger_path = os.path.join(old_rive_dir, drive, 'data-logger.v1.4.4.db')
-    print(f"Loading data from {data_logger_path}")
-    sql_db = SqliteInterface(data_logger_path)
-    gnss_min_time, gnss_max_time = sql_db.get_min_max_system_time('gnss')
-    imu_min_time, imu_max_time = sql_db.get_min_max_system_time('imu')
-    mag_min_time, mag_max_time = sql_db.get_min_max_system_time('magnetometer')
-    # convert all to epoch
-    epoch_gnss_min_time = convertTimeToEpoch(gnss_min_time)
-    epoch_gnss_max_time = convertTimeToEpoch(gnss_max_time)
-    epoch_imu_min_time = convertTimeToEpoch(imu_min_time)
-    epoch_imu_max_time = convertTimeToEpoch(imu_max_time)
-    epoch_mag_min_time = convertTimeToEpoch(mag_min_time)
-    epoch_mag_max_time = convertTimeToEpoch(mag_max_time)
-    # get the max min times
-    min_time = min(epoch_gnss_min_time, epoch_imu_min_time, epoch_mag_min_time)
-    max_time = max(epoch_gnss_max_time, epoch_imu_max_time, epoch_mag_max_time)
+    process_db_and_visualize(data_logger_path)
 
-    current_time = max_time
-    pastRange = current_time - min_time
-    print(f"Current time: {current_time}, Past range: {pastRange}")
-    heading_diff_mean, fused_heading, heading, gnss_time, heading_diff, time_diff, number_of_points, mean_diff = getDashcamToVehicleHeadingOffset(
-        sql_db, 
-        current_time=current_time, 
-        pastRange=pastRange, 
-    )
-    plot_signal_over_time(number_of_points, mean_diff, 'Heading Diff Mean')
-    plot_signal_over_time(time_diff, heading_diff, 'Heading Diff')
-    plot_signals_over_time(gnss_time, heading, fused_heading, 'GNSS Heading', 'Fused Heading')
-    plt.show()
+
+
+
 
 

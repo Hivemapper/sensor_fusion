@@ -141,7 +141,8 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time
     # Extract the data from the objects
     acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_time = extractAndSmoothImuData(imu_data)
     mag_x, mag_y, mag_z, mag_time = extractAndSmoothMagData(mag_data)
-    _, _, _, speed, heading, headingAccuracy, hdop, gdop, gnss_time, gnssFreq = extractGNSSData(gnss_data)
+    lats, lons, alts, speed, heading, headingAccuracy, hdop, gdop, gnss_time, gnssFreq = extractGNSSData(gnss_data)
+    clean_gnss_heading, _ = getCleanGNSSHeading(db_interface, current_time, pastRange)
 
     # downsample the data to match GNSS frequency
     acc_x_down = np.interp(gnss_time, imu_time, acc_x)
@@ -193,7 +194,14 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time
     acc_bundle = np.array(list(zip(acc_x_down, acc_y_down, acc_z_down)))
     gyro_bundle = np.array(list(zip(gyro_x_down, gyro_y_down, gyro_z_down)))
 
-    fused_heading, _, _ = calculateHeading(acc_bundle, gyro_bundle, calibrated_mag_bundle, heading[0], gnssFreq)
+    print(f"heading: {heading[0]}, clean_gnss_heading: {clean_gnss_heading[0]}")
+
+    initialPosition = [lats[0], lons[0], alts[0]]
+    for i in range(len(lats)):
+        if headingAccuracy[i] < GNSS_HEADING_ACCURACY_THRESHOLD:
+            initialPosition = [lats[i], lons[i], alts[i]]
+            break
+    fused_heading, _, _ = calculateHeading(acc_bundle, gyro_bundle, calibrated_mag_bundle, clean_gnss_heading[0], initialPosition, gnssFreq)
 
     # used to translate the fused heading from -180:180 to the correct range 0:360
     fused_heading = [heading_val + 360 if heading_val < 0 else heading_val for heading_val in fused_heading]
@@ -204,24 +212,29 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time
             # handle wrap around and shift by 180 degrees
             fused_heading = [(heading_val - 180) % 360 for heading_val in fused_heading]
 
-    heading_diff = []
-    time_diff = []
-    for i in range(len(headingAccuracy)):
-        if headingAccuracy[i] < GNSS_HEADING_ACCURACY_THRESHOLD:
-            heading_diff.append((fused_heading[i] - heading[i] + 180) % 360 - 180)
-            time_diff.append(gnss_time[i])
+    # heading_diff = []
+    # time_diff = []
+    # for i in range(len(headingAccuracy)):
+    #     if headingAccuracy[i] < GNSS_HEADING_ACCURACY_THRESHOLD:
+    #         heading_diff.append((fused_heading[i] - heading[i] + 180) % 360 - 180)
+    #         time_diff.append(gnss_time[i])
+
+    clean_heading_diff = []
+    for i in range(len(clean_gnss_heading)):
+        clean_heading_diff.append((fused_heading[i] - clean_gnss_heading[i] + 180) % 360 - 180)
+
 
     step_size = 10
     number_of_points = []
     mean_diff = []
-    for i in range(step_size,len(heading_diff), step_size):
+    for i in range(step_size,len(clean_heading_diff), step_size):
         number_of_points.append(i)
-        mean_diff.append(np.mean(heading_diff[:i]))
+        mean_diff.append(np.mean(clean_heading_diff[:i]))
 
-    heading_diff_mean = np.mean(heading_diff)
+    heading_diff_mean = np.mean(clean_heading_diff)
     print(f"Mean heading difference: {heading_diff_mean}")
 
-    return heading_diff_mean, fused_heading, heading, gnss_time, heading_diff, time_diff, number_of_points, mean_diff
+    return heading_diff_mean, fused_heading, clean_gnss_heading, gnss_time, clean_heading_diff, number_of_points, mean_diff
 
     
     

@@ -210,5 +210,6 @@ def extractGNSSData(data: List[GNSSData]):
         time.append(convertTimeToEpoch(point.time))
 
     freq = math.floor(calculateAverageFrequency(time))
+    print(f"GNSS data frequency: {freq} Hz")
 
     return lat, lon, alt, speed, heading, headingAccuracy, hdop, gdop, time, freq

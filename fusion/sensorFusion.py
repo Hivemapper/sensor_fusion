@@ -1,6 +1,7 @@
 import numpy as np
 import ahrs
 import math
+from ahrs.utils.wmm import WMM
 
 ########### FUSION OPTIONS ############
 SF_MAGNETIC_REF = [22371.8, 5180, 41715.1]
@@ -8,7 +9,7 @@ SF_MAGNETIC_DIP = 61.16779
 SENSOR_FREQ = 7.0
 
 ############ MAIN FUNCTIONS ############
-def calculateHeading(accel_data, gyro_data, mag_data, gnss_initial_heading, gnssFreq=SENSOR_FREQ, mag_ref=SF_MAGNETIC_REF):
+def calculateHeading(accel_data, gyro_data, mag_data, gnss_initial_heading, initialPosition, gnssFreq=SENSOR_FREQ):
     # ensure same number of samples
     if not len(accel_data) == len(mag_data):
         raise ValueError("Both lists must equal size.")
@@ -18,7 +19,7 @@ def calculateHeading(accel_data, gyro_data, mag_data, gnss_initial_heading, gnss
     q = q.from_angles(np.array([math.radians(gnss_initial_heading),0.0, 0.0]))
 
     # quats = sensorFusion.orientationFLAE(mag_data, accel_data)
-    quats = orientationEKF(mag=mag_data, accel=accel_data, gyro=gyro_data, q0=q, freq=gnssFreq, mag_ref=mag_ref)
+    quats = orientationEKF(mag=mag_data, accel=accel_data, gyro=gyro_data, q0=q, initialPosition=initialPosition, freq=gnssFreq)
     euler_list = convertToEuler(quats)
     heading, pitch, roll = [], [], []
     for euler in euler_list:
@@ -97,13 +98,17 @@ def orientationComplementary(mag, accel, gyro):
     )
     return orientation.Q
 
-def orientationEKF(mag, accel, gyro, q0, freq, mag_ref):
+def orientationEKF(mag, accel, gyro, q0, initialPosition, freq):
+    lat,lon,alt = initialPosition
+    wmm = WMM(latitude=lat, longitude=lon, height=alt)
+    print(f"Initial Position: {initialPosition}, magnetic ref: {wmm.X, wmm.Y, wmm.Z}")
+
     orientation = ahrs.filters.EKF(
         gyr=gyro, 
         acc=accel, 
         mag=mag, 
         frequency= freq, 
-        magnetic_ref = mag_ref,
+        magnetic_ref = np.array([wmm.X, wmm.Y, wmm.Z]),
         # magnetic_ref= SF_MAGNETIC_DIP,
         # g, a, m
         noises=[0.001, 0.5, 0.7], # Roger's values

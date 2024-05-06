@@ -165,7 +165,7 @@ class SqliteInterface:
         """
         end_row_id = self.get_nearest_row_id_to_time('imu', desiredTime)
         start_row_id = self.get_nearest_row_id_to_time('imu', desiredTime - pastRange)
-        print(f" IMU start row id: {start_row_id}, end row id: {end_row_id}")
+        # print(f" IMU start row id: {start_row_id}, end row id: {end_row_id}")
         rows = self.get_rows_between_ids('imu', start_row_id, end_row_id, order)
         results = [IMUData(row[0], row[1], row[2], row[3], row[4], row[5], row[6]) for row in rows]
         return results
@@ -180,9 +180,9 @@ class SqliteInterface:
         Returns:
             list: A list of MagnetometerData objects containing the magnetometer data.
         """
-        end_row_id = self.get_nearest_row_id_to_time('imu', desiredTime)
-        start_row_id = self.get_nearest_row_id_to_time('imu', desiredTime - pastRange)
-        print(f" Mag start row id: {start_row_id}, end row id: {end_row_id}")
+        end_row_id = self.get_nearest_row_id_to_time('magnetometer', desiredTime)
+        start_row_id = self.get_nearest_row_id_to_time('magnetometer', desiredTime - pastRange)
+        # print(f" Mag start row id: {start_row_id}, end row id: {end_row_id}")
         rows = self.get_rows_between_ids('magnetometer', start_row_id, end_row_id, order)
         results = [MagData(row[0], row[1], row[2], row[3]) for row in rows]
         return results
