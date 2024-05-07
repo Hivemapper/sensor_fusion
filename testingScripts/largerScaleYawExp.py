@@ -59,28 +59,29 @@ def process_db_and_visualize(dbpath: str):
 
 if __name__ == "__main__":
     # Load data and filter data
-    # dir_path = '/Users/rogerberman/dev_ground/CtpDbsDecoded'
-    # drives = {}
-    # for user in os.listdir(dir_path):
-    #     drives[user] = []
-    #     for drive in os.listdir(os.path.join(dir_path, user)):
-    #         if '-shm' not in drive and '-wal' not in drive and '.db' in drive:
-    #             file_path = os.path.join(dir_path, user, drive)
-    #             if os.path.isfile(file_path) and os.path.getsize(file_path) > 0:
-    #                 sql_db = SqliteInterface(file_path)
-    #                 # check for existence of mag table
-    #                 if sql_db.table_exists('magnetometer'):
-    #                     # check to ensure data is written to mag table
-    #                     if sql_db.get_min_max_system_time('magnetometer') != (None, None):
-    #                         drives[user].append(file_path)
+    dir_path = '/Users/rogerberman/dev_ground/CtpDbsDecoded'
+    drives = {}
+    for user in os.listdir(dir_path):
+        drives[user] = []
+        for drive in os.listdir(os.path.join(dir_path, user)):
+            if '-shm' not in drive and '-wal' not in drive and '.db' in drive:
+                file_path = os.path.join(dir_path, user, drive)
+                if os.path.isfile(file_path) and os.path.getsize(file_path) > 0:
+                    sql_db = SqliteInterface(file_path)
+                    # check for existence of mag table
+                    if sql_db.table_exists('magnetometer'):
+                        # check to ensure data is written to mag table
+                        if sql_db.get_min_max_system_time('magnetometer') != (None, None):
+                            drives[user].append(file_path)
 
 
-    # # for user in drives:
-    #     for drive_path in drives[user]:
-    #         try:
-    #             process_db_and_visualize(drive_path)
-    #         except Exception as e:
-    #             print(f"Error: {e}")
+    # for user in drives:
+        for drive_path in drives[user]:
+            try:
+                # if 'exotic-purple-mapmaker/2024-04-29T11:40:16.000Z.db' in drive_path:
+                process_db_and_visualize(drive_path)
+            except Exception as e:
+                print(f"Error: {e}")
 
 
     # get max min times for all tables
@@ -90,10 +91,11 @@ if __name__ == "__main__":
     # current time
     # past range
 
-    old_rive_dir = '/Users/rogerberman/dev_ground/YawFusionDrives'
-    drive = 'drive3'
-    data_logger_path = os.path.join(old_rive_dir, drive, 'data-logger.v1.4.4.db')
-    process_db_and_visualize(data_logger_path)
+    # old_rive_dir = '/Users/rogerberman/dev_ground/YawFusionDrives'
+    # drives = ['drive1', 'drive2', 'drive3', 'drive4', 'lafayette' ,'highway_sf']
+    # for drive in drives:
+    #     data_logger_path = os.path.join(old_rive_dir, drive, 'data-logger.v1.4.4.db')
+    #     process_db_and_visualize(data_logger_path)
 
 
 

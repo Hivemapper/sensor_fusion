@@ -136,6 +136,7 @@ def extractAndSmoothImuData(imu_data: List[IMUData]):
     gyro_x, gyro_y, gyro_z = [], [], []
     time = []
 
+
     for point in imu_data:
         acc_x.append(point.ax)
         acc_y.append(point.ay)
@@ -145,9 +146,33 @@ def extractAndSmoothImuData(imu_data: List[IMUData]):
         gyro_z.append(math.radians(point.gz))
         time.append(convertTimeToEpoch(point.time))
 
+    time = repair_time(time)
+
     freq = math.floor(calculateAverageFrequency(time))
     print(f"IMU data frequency: {freq} Hz")
     freq_fourth = freq // 4
+
+    import sys
+    sys.path.insert(0, '/Users/rogerberman/sensor-fusion/testingScripts')  # Add the project root to the Python path
+    from testingScripts.plottingCode import plot_signal_over_time
+    import matplotlib.pyplot as plt
+    plot_signal_over_time(list(range(len(time))), time, 'IMU time')
+    # time_diffs = []
+    # indexes = []
+    # for i in range(1, len(time)):
+    #     diff = time[i] - time[i-1]
+    #     time_diffs.append(diff)
+    #     indexes.append((i-1, i))
+
+    # # Sort time differences with the greatest at the front
+    # sorted_diffs_with_indexes = sorted(zip(time_diffs, indexes), reverse=True)
+    # # Extract top 15 time differences and their corresponding indexes
+    # top_15_diffs_with_indexes = sorted_diffs_with_indexes[:15]
+    # # Print top 15 time differences and their corresponding indexes
+    # print("Top 15 Time Differences:")
+    # for diff, (idx1, idx2) in top_15_diffs_with_indexes:
+    #     print(f"Time difference: {diff}, Indexes: {idx1}, {idx2}")
+    # plt.show()
 
     acc_x = calculateRollingAverage(acc_x, freq_fourth)
     acc_y = calculateRollingAverage(acc_y, freq_fourth)
@@ -174,6 +199,31 @@ def extractAndSmoothMagData(data: List[MagData]):
         mag_y.append(point.my)
         mag_z.append(point.mz)
         time.append(convertTimeToEpoch(point.time))
+
+    time = repair_time(time)
+
+    import sys
+    sys.path.insert(0, '/Users/rogerberman/sensor-fusion/testingScripts')  # Add the project root to the Python path
+    from testingScripts.plottingCode import plot_signal_over_time
+    import matplotlib.pyplot as plt
+    plot_signal_over_time(list(range(len(time))), time, 'Mag time')
+    # time_diffs = []
+    # indexes = []
+    # for i in range(1, len(time)):
+    #     diff = time[i] - time[i-1]
+    #     time_diffs.append(diff)
+    #     indexes.append((i-1, i))
+
+    # # Sort time differences with the greatest at the front
+    # sorted_diffs_with_indexes = sorted(zip(time_diffs, indexes), reverse=True)
+    # # Extract top 15 time differences and their corresponding indexes
+    # top_15_diffs_with_indexes = sorted_diffs_with_indexes[:15]
+    # # Print top 15 time differences and their corresponding indexes
+    # print("Top 15 Time Differences:")
+    # for diff, (idx1, idx2) in top_15_diffs_with_indexes:
+    #     print(f"Time difference: {diff}, Indexes: {idx1}, {idx2}")
+    # plt.show()
+    
 
     freq = math.floor(calculateAverageFrequency(time))
     print(f"Magnetometer data frequency: {freq} Hz")
@@ -213,3 +263,44 @@ def extractGNSSData(data: List[GNSSData]):
     print(f"GNSS data frequency: {freq} Hz")
 
     return lat, lon, alt, speed, heading, headingAccuracy, hdop, gdop, time, freq
+
+
+def repair_time(time):
+    # Repair imu and mag time when gnss drops
+    DAY_IN_MS = 1000 * 60 * 60 * 24
+    repaired_time = []
+    repaired_time.append(time[0])
+    
+    # Find pairs of indices where time needs to be repaired
+    offset = 0
+    first = False
+    for i in range(1, len(time)):
+        time_diff = time[i] - time[i - 1]
+
+        # identify when gnss drops occur
+        if time_diff <= -DAY_IN_MS:
+            print(f"GNSS DROP: Time difference: {time_diff} at index {i}")
+            offset = abs(time_diff)
+            first = True
+        elif time_diff >= DAY_IN_MS:
+            offset = 0
+        
+        # apply offset due to gnss drops
+        # first case apply average period to compensate for the drop(best? compensation for the first drop)
+        if offset > 0 and first:
+            time_diffs = [repaired_time[i] - repaired_time[i - 1] for i in range(1, len(repaired_time))]
+            average_period = sum(time_diffs) / len(time_diffs)
+            offset = offset + average_period
+            first = False
+            repaired_time.append(time[i] + offset)
+        # second case apply offset to the rest of the time where drop occurs
+        elif offset > 0 and not first:
+            repaired_time.append(time[i] + offset)
+        # no drop append as normal
+        else:
+            repaired_time.append(time[i])
+
+    # Check if the length of the time list changed
+    if len(time) != len(repaired_time):
+        print(f"Error: Time list length changed from {len(time)} to {len(repaired_time)}")
+    return repaired_time

@@ -13,7 +13,6 @@ from .sqliteinterface import SqliteInterface, ASC
 from .utils import calculateAttributesAverage, extractAndSmoothImuData, extractAndSmoothMagData, extractGNSSData
 from .ellipsoid_fit import calibrate_mag
 
-
 TEN_MINUTES = 1000 * 60 * 10 # in millisecond epoch time
 QUARTER_SECOND = 250 # in millisecond epoch time
 HALF_SECOND = 500 # in millisecond epoch time
@@ -144,6 +143,8 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time
     lats, lons, alts, speed, heading, headingAccuracy, hdop, gdop, gnss_time, gnssFreq = extractGNSSData(gnss_data)
     clean_gnss_heading, _ = getCleanGNSSHeading(db_interface, current_time, pastRange)
 
+    print("Data extracted successfully!")
+
     # downsample the data to match GNSS frequency
     acc_x_down = np.interp(gnss_time, imu_time, acc_x)
     acc_y_down = np.interp(gnss_time, imu_time, acc_y)
@@ -154,6 +155,8 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time
     mag_x_down = np.interp(gnss_time, mag_time, mag_x)
     mag_y_down = np.interp(gnss_time, mag_time, mag_y)
     mag_z_down = np.interp(gnss_time, mag_time, mag_z)
+
+    print("Data downsampled successfully!")
 
     # Calculate bias for accel and gyro
     zero_speed_indices = [i for i, speed_val in enumerate(speed) if speed_val < GNSS_LOW_SPEED_THRESHOLD]
