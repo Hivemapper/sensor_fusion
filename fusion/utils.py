@@ -8,6 +8,7 @@ from .sqliteinterface import (
     MagData, 
     GNSSData
 )
+from ahrs.utils.wmm import WMM
 
 def calculateAverageFrequency(epoch_times_ms):
     """
@@ -124,7 +125,7 @@ def calculateAttributesAverage(data_list):
     
     return avg_values
 
-def extractAndSmoothImuData(imu_data: List[IMUData]):
+def extractAndSmoothImuData(imu_data: List[IMUData], inital_gnss_time: str):
     """
     Extracts accelerometer, gyroscope data, and time differences from the given data.
     Parameters:
@@ -136,43 +137,30 @@ def extractAndSmoothImuData(imu_data: List[IMUData]):
     gyro_x, gyro_y, gyro_z = [], [], []
     time = []
 
+    initial_time = convertTimeToEpoch(inital_gnss_time)
 
     for point in imu_data:
-        acc_x.append(point.ax)
-        acc_y.append(point.ay)
-        acc_z.append(point.az)
-        gyro_x.append(math.radians(point.gx))
-        gyro_y.append(math.radians(point.gy))
-        gyro_z.append(math.radians(point.gz))
-        time.append(convertTimeToEpoch(point.time))
+        cur_time = convertTimeToEpoch(point.time)
+        if cur_time >= initial_time:
+            acc_x.append(point.ax)
+            acc_y.append(point.ay)
+            acc_z.append(point.az)
+            gyro_x.append(math.radians(point.gx))
+            gyro_y.append(math.radians(point.gy))
+            gyro_z.append(math.radians(point.gz))
+            time.append(cur_time)
 
     time = repair_time(time)
 
     freq = math.floor(calculateAverageFrequency(time))
     print(f"IMU data frequency: {freq} Hz")
-    freq_fourth = freq // 4
+    freq_fourth = freq // 2
 
-    import sys
-    sys.path.insert(0, '/Users/rogerberman/sensor-fusion/testingScripts')  # Add the project root to the Python path
-    from testingScripts.plottingCode import plot_signal_over_time
-    import matplotlib.pyplot as plt
-    plot_signal_over_time(list(range(len(time))), time, 'IMU time')
-    # time_diffs = []
-    # indexes = []
-    # for i in range(1, len(time)):
-    #     diff = time[i] - time[i-1]
-    #     time_diffs.append(diff)
-    #     indexes.append((i-1, i))
-
-    # # Sort time differences with the greatest at the front
-    # sorted_diffs_with_indexes = sorted(zip(time_diffs, indexes), reverse=True)
-    # # Extract top 15 time differences and their corresponding indexes
-    # top_15_diffs_with_indexes = sorted_diffs_with_indexes[:15]
-    # # Print top 15 time differences and their corresponding indexes
-    # print("Top 15 Time Differences:")
-    # for diff, (idx1, idx2) in top_15_diffs_with_indexes:
-    #     print(f"Time difference: {diff}, Indexes: {idx1}, {idx2}")
-    # plt.show()
+    # import sys
+    # sys.path.insert(0, '/Users/rogerberman/sensor-fusion/testingScripts')  # Add the project root to the Python path
+    # from testingScripts.plottingCode import plot_signal_over_time
+    # import matplotlib.pyplot as plt
+    # plot_signal_over_time(list(range(len(time))), time, 'IMU time')
 
     acc_x = calculateRollingAverage(acc_x, freq_fourth)
     acc_y = calculateRollingAverage(acc_y, freq_fourth)
@@ -181,9 +169,9 @@ def extractAndSmoothImuData(imu_data: List[IMUData]):
     gyro_y = calculateRollingAverage(gyro_y, freq_fourth)
     gyro_z = calculateRollingAverage(gyro_z, freq_fourth)
 
-    return acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, time
+    return acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, time, freq
 
-def extractAndSmoothMagData(data: List[MagData]):
+def extractAndSmoothMagData(data: List[MagData], inital_gnss_time: str):
     """
     Extracts magnetometer data and time differences from the given data.
     Parameters:
@@ -194,36 +182,23 @@ def extractAndSmoothMagData(data: List[MagData]):
     mag_x, mag_y, mag_z = [], [], []
     time = []
 
+    initial_time = convertTimeToEpoch(inital_gnss_time)
+
     for point in data:
-        mag_x.append(point.mx)
-        mag_y.append(point.my)
-        mag_z.append(point.mz)
-        time.append(convertTimeToEpoch(point.time))
+        cur_time = convertTimeToEpoch(point.time)
+        if cur_time >= initial_time:
+            mag_x.append(point.mx)
+            mag_y.append(point.my)
+            mag_z.append(point.mz)
+            time.append(cur_time)
 
     time = repair_time(time)
 
-    import sys
-    sys.path.insert(0, '/Users/rogerberman/sensor-fusion/testingScripts')  # Add the project root to the Python path
-    from testingScripts.plottingCode import plot_signal_over_time
-    import matplotlib.pyplot as plt
-    plot_signal_over_time(list(range(len(time))), time, 'Mag time')
-    # time_diffs = []
-    # indexes = []
-    # for i in range(1, len(time)):
-    #     diff = time[i] - time[i-1]
-    #     time_diffs.append(diff)
-    #     indexes.append((i-1, i))
-
-    # # Sort time differences with the greatest at the front
-    # sorted_diffs_with_indexes = sorted(zip(time_diffs, indexes), reverse=True)
-    # # Extract top 15 time differences and their corresponding indexes
-    # top_15_diffs_with_indexes = sorted_diffs_with_indexes[:15]
-    # # Print top 15 time differences and their corresponding indexes
-    # print("Top 15 Time Differences:")
-    # for diff, (idx1, idx2) in top_15_diffs_with_indexes:
-    #     print(f"Time difference: {diff}, Indexes: {idx1}, {idx2}")
-    # plt.show()
-    
+    # import sys
+    # sys.path.insert(0, '/Users/rogerberman/sensor-fusion/testingScripts')  # Add the project root to the Python path
+    # from testingScripts.plottingCode import plot_signal_over_time
+    # import matplotlib.pyplot as plt
+    # plot_signal_over_time(list(range(len(time))), time, 'Mag time')
 
     freq = math.floor(calculateAverageFrequency(time))
     print(f"Magnetometer data frequency: {freq} Hz")
@@ -233,7 +208,7 @@ def extractAndSmoothMagData(data: List[MagData]):
     mag_y = calculateRollingAverage(mag_y, freq_fourth)
     mag_z = calculateRollingAverage(mag_z, freq_fourth)
 
-    return mag_x, mag_y, mag_z, time
+    return mag_x, mag_y, mag_z, time, freq
 
 def extractGNSSData(data: List[GNSSData]):
     """
@@ -304,3 +279,81 @@ def repair_time(time):
     if len(time) != len(repaired_time):
         print(f"Error: Time list length changed from {len(time)} to {len(repaired_time)}")
     return repaired_time
+
+
+
+def calculate_mag_headings(mag_bundle, accel_bundle, position):
+    lat,lon,alt = position
+    wmm = WMM(latitude=lat, longitude=lon, height=alt)
+    declination = wmm.magnetic_elements['D']
+    print(f"Declination: {declination} degrees")
+
+    m_xs = mag_bundle[:, 0]
+    m_ys = mag_bundle[:, 1]
+    m_zs = mag_bundle[:, 2]
+    a_xs = accel_bundle[:, 0]
+    a_ys = accel_bundle[:, 1]
+    a_zs = accel_bundle[:, 2]
+
+    headings = []
+
+    # Loop through all measurements
+    for m_x, m_y, m_z, a_x, a_y, a_z in zip(m_xs, m_ys, m_zs, a_xs, a_ys, a_zs):
+        # Calculate pitch and roll from accelerometer data
+        pitch = math.atan2(-a_x, math.sqrt(a_y**2 + a_z**2))
+        roll = math.atan2(a_y, a_z)
+
+        # Compensate the magnetometer data
+        m_x_prime = m_x * math.cos(roll) + m_z * math.sin(roll)
+        m_y_prime = m_x * math.sin(pitch) * math.sin(roll) + m_y * math.cos(pitch) - m_z * math.sin(pitch) * math.cos(roll)
+
+        # Calculate the magnetic heading
+        magnetic_heading = math.atan2(m_x_prime, m_y_prime) * (180 / math.pi)
+
+        # Adjust for magnetic declination to get true heading
+        true_heading = magnetic_heading + declination
+        # Normalize the heading to be within 0-360 degrees
+        if true_heading >= 360:
+            true_heading -= 360
+        elif true_heading < 0:
+            true_heading += 360
+
+        # Append the calculated true heading to the list
+        headings.append(true_heading)
+
+    return headings
+
+def calculate_imu_forward_velocity(acc_bundle, imu_time, gnss_speed, angle_offset_degrees):
+    # Constants
+    GNSS_ONE_SECOND = 8  # Adjust this to your actual number of samples per second in GNSS data
+    ACCEL_GRAVITY = 9.81  # Acceleration due to gravity (m/s^2)
+    ONE_SECOND = 1000  # Time units in milliseconds
+    RADIANS = np.pi / 180  # Conversion factor from degrees to radians
+
+    # Convert angle offset from degrees to radians
+    angle_offset_radians = angle_offset_degrees * RADIANS
+
+    # Grab initial velocity from first second of GNSS data
+    gnss_speed = [data for data in gnss_speed[:GNSS_ONE_SECOND]]
+    velocity_forward = sum(gnss_speed) / len(gnss_speed) if gnss_speed else 0
+
+    # Calculate deltaTImu
+    totalTime = imu_time[-1] - imu_time[0]
+    deltaTImu = totalTime / len(imu_time) / ONE_SECOND  # Convert ms to seconds
+
+    # Lists to store velocity for analysis
+    velocity_history = []
+
+    # Iterate through the IMU data
+    for data in acc_bundle:
+        acc_x = data[0]
+        acc_y = data[1]
+
+        # Adjust acceleration components based on the offset angle
+        acc_forward = acc_x * np.cos(angle_offset_radians) + acc_y * np.sin(angle_offset_radians)
+
+        # Integrate forward acceleration to obtain velocity
+        velocity_forward += acc_forward * ACCEL_GRAVITY * deltaTImu
+        velocity_history.append(velocity_forward)
+
+    return velocity_history

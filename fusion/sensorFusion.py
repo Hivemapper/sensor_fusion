@@ -9,17 +9,18 @@ SF_MAGNETIC_DIP = 61.16779
 SENSOR_FREQ = 7.0
 
 ############ MAIN FUNCTIONS ############
-def calculateHeading(accel_data, gyro_data, mag_data, gnss_initial_heading, initialPosition, gnssFreq=SENSOR_FREQ):
+def calculateHeading(accel_data, gyro_data, mag_data, time, gnss_initial_heading, initialPosition, gnssFreq=SENSOR_FREQ, P=None):
     # ensure same number of samples
     if not len(accel_data) == len(mag_data):
         raise ValueError("Both lists must equal size.")
 
-    q = ahrs.Quaternion()
+    q0 = ahrs.Quaternion()
     # yaw, pitch, roll in radians
-    q = q.from_angles(np.array([math.radians(gnss_initial_heading),0.0, 0.0]))
-
+    q0 = q0.from_angles(np.array([math.radians(gnss_initial_heading),0.0, 0.0]))
+    # q0[1], q0[3] = q0[3], q0[1]
+    # print(f"q0: {q0}")
     # quats = sensorFusion.orientationFLAE(mag_data, accel_data)
-    quats = orientationEKF(mag=mag_data, accel=accel_data, gyro=gyro_data, q0=q, initialPosition=initialPosition, freq=gnssFreq)
+    quats = orientationEKF(mag=mag_data, accel=accel_data, gyro=gyro_data, time=time, q0=q0, initialPosition=initialPosition, freq=gnssFreq, P=P)
     euler_list = convertToEuler(quats)
     heading, pitch, roll = [], [], []
     for euler in euler_list:
@@ -87,37 +88,60 @@ def orientationAQUA(mag, accel, gyro):
     orientation = ahrs.filters.AQUA(gyr=gyro, acc=accel, mag=mag, frequency=38.0, adaptive=True)
     return orientation.Q
 
-def orientationComplementary(mag, accel, gyro):
+def orientationComplementary(mag, accel, gyro, time, q0, initialPosition, freq):
     orientation = ahrs.filters.Complementary(
         gyr=gyro, 
         acc=accel, 
         mag=mag, 
-        frequency=SENSOR_FREQ, 
-        gain=0.5,
+        frequency=freq, 
+        gain=0.1,
+        q0=q0,
         representation='quaternion'
     )
     return orientation.Q
 
-def orientationEKF(mag, accel, gyro, q0, initialPosition, freq):
+def orientationEKF(mag, accel, gyro, time, q0, initialPosition, freq, P=None):
     lat,lon,alt = initialPosition
     wmm = WMM(latitude=lat, longitude=lon, height=alt)
-    print(f"Initial Position: {initialPosition}, magnetic ref: {wmm.X, wmm.Y, wmm.Z}")
+    # print(f"Initial Position: {initialPosition}, magnetic ref: {wmm.X, wmm.Y, wmm.Z}")
 
     orientation = ahrs.filters.EKF(
         gyr=gyro, 
         acc=accel, 
-        mag=mag, 
+        # mag=mag, 
         frequency= freq, 
         magnetic_ref = np.array([wmm.X, wmm.Y, wmm.Z]),
-        # magnetic_ref= SF_MAGNETIC_DIP,
         # g, a, m
-        noises=[0.001, 0.5, 0.7], # Roger's values
+        # noises=[0.001, 0.5, 0.7], # Roger's values
         # noises=[0.001, 0.165, 0.2], # Alexi's values
-        # noises=[0.001, 0.5, 0.5],
+        noises=[0.001, 0.05, 0.7],
         # frame='NED',
         q0=q0,
+        P=P
     )
+    # print(f"Error covariance: {orientation.P}")
     return orientation.Q
+
+# def orientationEKF(mag, accel, gyro, time, q0, initialPosition, freq):
+#     lat,lon,alt = initialPosition
+#     wmm = WMM(latitude=lat, longitude=lon, height=alt)
+#     print(f"Initial Position: {initialPosition}, magnetic ref: {wmm.X, wmm.Y, wmm.Z}")
+
+#     ekf_filter = ahrs.filters.EKF(
+#         magnetic_ref=np.array([wmm.X, wmm.Y, wmm.Z]),
+#         noises=[0.2, 0.5, 0.5],
+#         q0=q0,
+#     )
+#     num_samples = len(accel)
+#     Q = np.zeros((num_samples, 4))
+#     Q[0] = q0
+#     Q[0] /= np.linalg.norm(Q[0])
+#     print(f"Q0: {Q[0]}")
+#     for t in range(1, num_samples):
+#         diff_time = (time[t] - time[t-1])/1000.0
+#         # print(f"diff_time: {type(diff_time)}")
+#         Q[t] = ekf_filter.update(q=Q[t-1], gyr=gyro[t], acc=accel[t], mag=mag[t], dt=diff_time)
+#     return Q
 
 def orientationFourati(mag, accel, gyro):
     orientation = ahrs.filters.Fourati(

@@ -1,6 +1,5 @@
 import numpy as np
 import time
-from geopy.distance import geodesic
 
 from .sensorFusion import(
     calculateHeading, 
@@ -9,8 +8,15 @@ from .sensorFusion import(
     averageEulerAngles, 
     orientationFLAE
 ) 
-from .sqliteinterface import SqliteInterface, ASC
-from .utils import calculateAttributesAverage, extractAndSmoothImuData, extractAndSmoothMagData, extractGNSSData
+from .sqliteinterface import SqliteInterface, ASC, convertTimeToEpoch
+from .utils import (
+    calculateAttributesAverage, 
+    extractAndSmoothImuData, 
+    extractAndSmoothMagData, 
+    extractGNSSData,
+    calculate_mag_headings,
+    calculate_imu_forward_velocity,
+)
 from .ellipsoid_fit import calibrate_mag
 
 TEN_MINUTES = 1000 * 60 * 10 # in millisecond epoch time
@@ -133,15 +139,16 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time
     imu_data = db_interface.queryImuUsingRowID(current_time, pastRange, ASC)
     mag_data = db_interface.queryMagnetometerUsingRowID(current_time, pastRange, ASC)
     gnss_data = db_interface.queryGnss(current_time, pastRange, ASC)
-    print(f"len(imu_data): {len(imu_data)}")
-    print(f"len(mag_data): {len(mag_data)}")
-    print(f"len(gnss_data): {len(gnss_data)}")
+    # print(f"len(imu_data): {len(imu_data)}")
+    # print(f"len(mag_data): {len(mag_data)}")
+    # print(f"len(gnss_data): {len(gnss_data)}")
 
     # Extract the data from the objects
-    acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_time = extractAndSmoothImuData(imu_data)
-    mag_x, mag_y, mag_z, mag_time = extractAndSmoothMagData(mag_data)
+    acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_time, imu_freq = extractAndSmoothImuData(imu_data, gnss_data[0].time)
+    mag_x, mag_y, mag_z, mag_time, mag_freq = extractAndSmoothMagData(mag_data, gnss_data[0].time)
     lats, lons, alts, speed, heading, headingAccuracy, hdop, gdop, gnss_time, gnssFreq = extractGNSSData(gnss_data)
     clean_gnss_heading, _ = getCleanGNSSHeading(db_interface, current_time, pastRange)
+    print(f" GNSS initial time: {gnss_time[0]}, IMU initial time: {imu_time[0]}, Mag initial time: {mag_time[0]}")
 
     print("Data extracted successfully!")
 
@@ -152,9 +159,9 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time
     gyro_x_down = np.interp(gnss_time, imu_time, gyro_x)
     gyro_y_down = np.interp(gnss_time, imu_time, gyro_y)
     gyro_z_down = np.interp(gnss_time, imu_time, gyro_z)
-    mag_x_down = np.interp(gnss_time, mag_time, mag_x)
-    mag_y_down = np.interp(gnss_time, mag_time, mag_y)
-    mag_z_down = np.interp(gnss_time, mag_time, mag_z)
+    # mag_x_down = np.interp(gnss_time, mag_time, mag_x)
+    # mag_y_down = np.interp(gnss_time, mag_time, mag_y)
+    # mag_z_down = np.interp(gnss_time, mag_time, mag_z)
 
     print("Data downsampled successfully!")
 
@@ -179,41 +186,105 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time
     gyro_y_down_zero_speed_avg = np.mean(gyro_y_down_zero_speed)
     gyro_z_down_zero_speed_avg = np.mean(gyro_z_down_zero_speed)
 
+
+    # ignore gnss and sample to match highest frequency between imu and mag
+    acc_x_input = []
+    acc_y_input = []
+    acc_z_input = []
+    gyro_x_input = []
+    gyro_y_input = []
+    gyro_z_input = []
+    mag_x_input = []
+    mag_y_input = []
+    mag_z_input = []
+    time_input = []
+    freq_input = 0
+    if imu_freq > mag_freq:
+        acc_x_input = acc_x
+        acc_y_input = acc_y
+        acc_z_input = acc_z
+        gyro_x_input = gyro_x
+        gyro_y_input = gyro_y
+        gyro_z_input = gyro_z
+        mag_x_input = np.interp(imu_time, mag_time, mag_x)
+        mag_y_input = np.interp(imu_time, mag_time, mag_y)
+        mag_z_input = np.interp(imu_time, mag_time, mag_z)
+        time_input = imu_time
+        freq_input = imu_freq
+    else:
+        acc_x_input = np.interp(mag_time, imu_time, acc_x)
+        acc_y_input = np.interp(mag_time, imu_time, acc_y)
+        acc_z_input = np.interp(mag_time, imu_time, acc_z)
+        gyro_x_input = np.interp(mag_time, imu_time, gyro_x)
+        gyro_y_input = np.interp(mag_time, imu_time, gyro_y)
+        gyro_z_input = np.interp(mag_time, imu_time, gyro_z)
+        mag_x_input = mag_x
+        mag_y_input = mag_y
+        mag_z_input = mag_z
+        time_input = mag_time
+        freq_input = mag_freq   
+
     # Apply the bias to the data
-    acc_x_down = [a - acc_x_down_zero_speed_avg for a in acc_x_down]
-    acc_y_down = [a - acc_y_down_zero_speed_avg for a in acc_y_down]
-    acc_z_down = [a - acc_z_down_zero_speed_avg for a in acc_z_down]
-    gyro_x_down = [g - gyro_x_down_zero_speed_avg for g in gyro_x_down]
-    gyro_y_down = [g - gyro_y_down_zero_speed_avg for g in gyro_y_down]
-    gyro_z_down = [g - gyro_z_down_zero_speed_avg for g in gyro_z_down]
+    acc_x_input = [a - acc_x_down_zero_speed_avg for a in acc_x_input]
+    acc_y_input = [a - acc_y_down_zero_speed_avg for a in acc_y_input]
+    acc_z_input = [a - acc_z_down_zero_speed_avg for a in acc_z_input]
+    gyro_x_input = [g - gyro_x_down_zero_speed_avg for g in gyro_x_input]
+    gyro_y_input = [g - gyro_y_down_zero_speed_avg for g in gyro_y_input]
+    gyro_z_input = [g - gyro_z_down_zero_speed_avg for g in gyro_z_input]
+
+    import sys
+    sys.path.insert(0, '/Users/rogerberman/sensor-fusion/testingScripts')  # Add the project root to the Python path
+    from testingScripts.plottingCode import plot_signal_over_time
+    import matplotlib.pyplot as plt
+    plot_signal_over_time(time_input, acc_x_input, 'acc x time')
+    plot_signal_over_time(time_input, acc_y_input, 'acc y time')
+    plot_signal_over_time(time_input, gyro_z_input, 'gyro z time')
 
     print(f"Accel offsets: {acc_x_down_zero_speed_avg}, {acc_y_down_zero_speed_avg}, {acc_z_down_zero_speed_avg}")
     print(f"Gyro offsets: {gyro_x_down_zero_speed_avg}, {gyro_y_down_zero_speed_avg}, {gyro_z_down_zero_speed_avg}")
 
     # Calibrate Mag
-    mag_bundle = np.array(list(zip(mag_x_down, mag_y_down, mag_z_down)))
+    mag_bundle = np.array(list(zip(mag_x_input, mag_y_input, mag_z_input)))
     calibrated_mag_bundle = calibrate_mag(mag_bundle)
 
-    acc_bundle = np.array(list(zip(acc_x_down, acc_y_down, acc_z_down)))
-    gyro_bundle = np.array(list(zip(gyro_x_down, gyro_y_down, gyro_z_down)))
 
-    print(f"heading: {heading[0]}, clean_gnss_heading: {clean_gnss_heading[0]}")
+    acc_bundle = np.array(list(zip(acc_x_input, acc_y_input, acc_z_input)))
+    gyro_bundle = np.array(list(zip(gyro_x_input, gyro_y_input, gyro_z_input)))
+
+    # print(f"heading: {heading[0]}, clean_gnss_heading: {clean_gnss_heading[0]}")
 
     initialPosition = [lats[0], lons[0], alts[0]]
     for i in range(len(lats)):
         if headingAccuracy[i] < GNSS_HEADING_ACCURACY_THRESHOLD:
             initialPosition = [lats[i], lons[i], alts[i]]
             break
-    fused_heading, _, _ = calculateHeading(acc_bundle, gyro_bundle, calibrated_mag_bundle, clean_gnss_heading[0], initialPosition, gnssFreq)
+    # initialHeading = clean_gnss_heading[0] - 360 if clean_gnss_heading[0] > 180 else clean_gnss_heading[0]
+    initialHeading = clean_gnss_heading[0]
+    # P = [
+    #     [ 1.03503015e-05, -5.03595339e-06, -5.79910035e-06, -2.25042690e-07],
+    #     [-5.03595339e-06,  3.74206730e-05,  4.71497232e-05,  9.90866868e-07],
+    #     [-5.79910035e-06,  4.71497232e-05,  6.00017114e-05,  2.19874434e-06],
+    #     [-2.25042690e-07,  9.90866868e-07,  2.19874434e-06,  9.67468524e-06],
+    # ]
+    P = None
+    fused_heading, _, _ = calculateHeading(acc_bundle, gyro_bundle, calibrated_mag_bundle, time_input, initialHeading, initialPosition, freq_input, P)
+    mag_calc_heading = calculate_mag_headings(calibrated_mag_bundle, acc_bundle, initialPosition)
+    imu_vel = calculate_imu_forward_velocity(acc_bundle, time_input, speed, 0)
 
     # used to translate the fused heading from -180:180 to the correct range 0:360
     fused_heading = [heading_val + 360 if heading_val < 0 else heading_val for heading_val in fused_heading]
 
+    print(f"Initial Heading: {initialHeading}, Fused Heading: {fused_heading[0]}")
+
+    fused_heading = np.interp(gnss_time, time_input, fused_heading)
+    mag_calc_heading = np.interp(gnss_time, time_input, mag_calc_heading)
+    imu_vel = np.interp(gnss_time, time_input, imu_vel)
+
     # used when the heading is off by 180 degrees
     # check last heading diff to make decision
-    if abs(fused_heading[-1] - heading[-1]) > HEADING_DIFF_MAGNETOMETER_FLIP_THRESHOLD:
-            # handle wrap around and shift by 180 degrees
-            fused_heading = [(heading_val - 180) % 360 for heading_val in fused_heading]
+    # if abs(fused_heading[-1] - heading[-1]) > HEADING_DIFF_MAGNETOMETER_FLIP_THRESHOLD:
+    #         # handle wrap around and shift by 180 degrees
+    #         fused_heading = [(heading_val - 180) % 360 for heading_val in fused_heading]
 
     # heading_diff = []
     # time_diff = []
@@ -237,7 +308,29 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time
     heading_diff_mean = np.mean(clean_heading_diff)
     print(f"Mean heading difference: {heading_diff_mean}")
 
-    return heading_diff_mean, fused_heading, clean_gnss_heading, gnss_time, clean_heading_diff, number_of_points, mean_diff
+
+    import sys
+    sys.path.insert(0, '/Users/rogerberman/sensor-fusion/testingScripts')  # Add the project root to the Python path
+    from testingScripts.plottingCode import plot_signal_over_time, plot_signals_over_time
+    import matplotlib.pyplot as plt
+    plot_signal_over_time(number_of_points, mean_diff, 'Clean Heading Diff Mean')
+    plot_signal_over_time(gnss_time, clean_heading_diff, 'Clean Heading Diff')
+    print(f"Initial Clean GNSS Heading: {clean_gnss_heading[0]}, Fused Heading: {fused_heading[0]}")
+
+    plot_signals_over_time(gnss_time, clean_gnss_heading, fused_heading, 'Clean GNSS Heading', 'Fused Heading')
+    plot_signals_over_time(gnss_time, clean_gnss_heading, mag_calc_heading, 'Clean GNSS Heading', 'Mag Calc Heading')
+    plot_signals_over_time(gnss_time, speed, imu_vel, 'GNSS Speed', 'IMU Forward Velocity')
+
+
+    # for angle in range(18, 10, -2):
+    #     imu_vel = calculate_imu_forward_velocity(acc_bundle, time_input, speed, angle)
+    #     imu_vel = np.interp(gnss_time, time_input, imu_vel)
+    #     plot_signals_over_time(gnss_time, speed, imu_vel, 'GNSS Speed', f'IMU Forward Velocity: {angle} degrees')
+
+
+    plt.show()
+
+    return heading_diff_mean
 
     
     
