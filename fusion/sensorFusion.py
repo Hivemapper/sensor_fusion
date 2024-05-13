@@ -2,6 +2,7 @@ import numpy as np
 import ahrs
 import math
 from ahrs.utils.wmm import WMM
+from .filter import estimate, quaternion_to_euler_degrees, quaternion_from_euler
 
 ########### FUSION OPTIONS ############
 SF_MAGNETIC_REF = [22371.8, 5180, 41715.1]
@@ -17,17 +18,21 @@ def calculateHeading(accel_data, gyro_data, mag_data, time, gnss_initial_heading
     q0 = ahrs.Quaternion()
     # yaw, pitch, roll in radians
     q0 = q0.from_angles(np.array([math.radians(gnss_initial_heading),0.0, 0.0]))
-    # q0[1], q0[3] = q0[3], q0[1]
-    # print(f"q0: {q0}")
-    # quats = sensorFusion.orientationFLAE(mag_data, accel_data)
     quats = orientationEKF(mag=mag_data, accel=accel_data, gyro=gyro_data, time=time, q0=q0, initialPosition=initialPosition, freq=gnssFreq, P=P)
+    # quats = orientationAQUA(mag=mag_data, accel=accel_data, gyro=gyro_data, time=time, q0=q0, initialPosition=initialPosition, freq=gnssFreq)
     euler_list = convertToEuler(quats)
-    heading, pitch, roll = [], [], []
+    yaw, pitch, roll = [], [], []
     for euler in euler_list:
         roll.append(euler[0])
         pitch.append(euler[1])
-        heading.append(euler[2])
-    return heading, pitch, roll
+        yaw.append(euler[2])
+
+    # initialOritentation = quaternion_from_euler(0, 0, math.radians(gnss_initial_heading))
+    # initialOritentation = quaternion_from_euler(0, 0, 0)
+    # # print(f"Initial Orientation: {initialOritentation}")
+    # quats = orientationEKF2(accel=accel_data, gyro=gyro_data, time=time, q0=initialOritentation)
+    # roll, pitch, yaw = quaternion_to_euler_degrees(quats)   
+    return yaw, pitch, roll
 
 ########### HELPER FUNCTIONS ############
 
@@ -84,8 +89,15 @@ def equalize_list_lengths(list1, list2):
 
 ########### FUSION ALGORITHM FUNCTIONS ############
 
-def orientationAQUA(mag, accel, gyro):
-    orientation = ahrs.filters.AQUA(gyr=gyro, acc=accel, mag=mag, frequency=38.0, adaptive=True)
+def orientationAQUA(mag, accel, gyro, time, q0, initialPosition, freq):
+    orientation = ahrs.filters.AQUA(
+        gyr=gyro, 
+        acc=accel, 
+        mag=mag, 
+        frequency=freq, 
+        adaptive=False,
+        q0=q0,
+    )
     return orientation.Q
 
 def orientationComplementary(mag, accel, gyro, time, q0, initialPosition, freq):
@@ -94,7 +106,7 @@ def orientationComplementary(mag, accel, gyro, time, q0, initialPosition, freq):
         acc=accel, 
         mag=mag, 
         frequency=freq, 
-        gain=0.1,
+        gain=0.75,
         q0=q0,
         representation='quaternion'
     )
@@ -112,15 +124,20 @@ def orientationEKF(mag, accel, gyro, time, q0, initialPosition, freq, P=None):
         frequency= freq, 
         magnetic_ref = np.array([wmm.X, wmm.Y, wmm.Z]),
         # g, a, m
-        # noises=[0.001, 0.5, 0.7], # Roger's values
+        noises=[0.085, 0.5, 0.5], # Roger's values
         # noises=[0.001, 0.165, 0.2], # Alexi's values
-        noises=[0.001, 0.05, 0.7],
+        # noises=[0.0085, 0.8, 0.9],
         # frame='NED',
         q0=q0,
         P=P
     )
     # print(f"Error covariance: {orientation.P}")
     return orientation.Q
+
+def orientationEKF2( accel, gyro, time, q0):
+    estimated_q, estimated_b, b_err = estimate(time, gyro.T, accel.T, q0)
+    return estimated_q
+
 
 # def orientationEKF(mag, accel, gyro, time, q0, initialPosition, freq):
 #     lat,lon,alt = initialPosition
