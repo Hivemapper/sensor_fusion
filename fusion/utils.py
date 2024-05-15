@@ -157,28 +157,17 @@ def extractAndSmoothImuData(imu_data: List[IMUData], inital_gnss_time: str = Non
     time = repair_time(time)
 
     freq = math.floor(calculateAverageFrequency(time))
-    # print(f"IMU data frequency: {freq} Hz")
-    freq_fourth = freq // 2
-    
+    print(f"IMU data frequency: {freq} Hz")
 
-
-    import sys
-    sys.path.insert(0, '/Users/rogerberman/sensor-fusion/testingScripts')  # Add the project root to the Python path
-    from testingScripts.plottingCode import plot_signal_over_time, plot_signals_over_time
-    plot_signals_over_time(time, acc_x ,butter_lowpass_filter(acc_x, freq), 'acc x unfilterd', 'acc x filtered')
-    plot_signals_over_time(time, acc_y, butter_lowpass_filter(acc_y, freq), 'acc y unfilterd', 'acc y filtered')
-    plot_signals_over_time(time, acc_z, butter_lowpass_filter(acc_z, freq), 'acc z unfilterd', 'acc z filtered')
-    plot_signals_over_time(time, gyro_x ,butter_lowpass_filter(gyro_x, freq), 'gyro x unfilterd', 'gyro x filtered')
-    plot_signals_over_time(time, gyro_y, butter_lowpass_filter(gyro_y, freq), 'gyro y unfilterd', 'gyro y filtered')
-    plot_signals_over_time(time, gyro_z, butter_lowpass_filter(gyro_z, freq), 'gyro z unfilterd', 'gyro z filtered')
-
-
-    # acc_x = calculateRollingAverage(acc_x, freq_fourth)
-    # acc_y = calculateRollingAverage(acc_y, freq_fourth)
-    # acc_z = calculateRollingAverage(acc_z, freq_fourth)
-    # gyro_x = calculateRollingAverage(gyro_x, freq_fourth)
-    # gyro_y = calculateRollingAverage(gyro_y, freq_fourth)
-    # gyro_z = calculateRollingAverage(gyro_z, freq_fourth)
+    # import sys
+    # sys.path.insert(0, '/Users/rogerberman/sensor-fusion/testingScripts')  # Add the project root to the Python path
+    # from testingScripts.plottingCode import plot_signal_over_time, plot_signals_over_time
+    # plot_signals_over_time(time, acc_x ,butter_lowpass_filter(acc_x, freq), 'acc x unfilterd', 'acc x filtered')
+    # plot_signals_over_time(time, acc_y, butter_lowpass_filter(acc_y, freq), 'acc y unfilterd', 'acc y filtered')
+    # plot_signals_over_time(time, acc_z, butter_lowpass_filter(acc_z, freq), 'acc z unfilterd', 'acc z filtered')
+    # plot_signals_over_time(time, gyro_x ,butter_lowpass_filter(gyro_x, freq), 'gyro x unfilterd', 'gyro x filtered')
+    # plot_signals_over_time(time, gyro_y, butter_lowpass_filter(gyro_y, freq), 'gyro y unfilterd', 'gyro y filtered')
+    # plot_signals_over_time(time, gyro_z, butter_lowpass_filter(gyro_z, freq), 'gyro z unfilterd', 'gyro z filtered')
 
     acc_x = butter_lowpass_filter(acc_x, freq)
     acc_y = butter_lowpass_filter(acc_y, freq)
@@ -214,8 +203,7 @@ def extractAndSmoothMagData(data: List[MagData], inital_gnss_time: str):
     time = repair_time(time)
 
     freq = math.floor(calculateAverageFrequency(time))
-    # print(f"Magnetometer data frequency: {freq} Hz")
-    freq_fourth = freq // 4
+    print(f"Magnetometer data frequency: {freq} Hz")
 
     # import sys
     # sys.path.insert(0, '/Users/rogerberman/sensor-fusion/testingScripts')  # Add the project root to the Python path
@@ -224,10 +212,6 @@ def extractAndSmoothMagData(data: List[MagData], inital_gnss_time: str):
     # plot_signals_over_time(time, mag_x ,butter_lowpass_filter(mag_x, freq), 'mag x unfilterd', 'mag x filtered')
     # plot_signals_over_time(time, mag_y, butter_lowpass_filter(mag_y, freq), 'mag y unfilterd', 'mag y filtered')
     # plot_signals_over_time(time, mag_z, butter_lowpass_filter(mag_z, freq), 'mag z unfilterd', 'mag z filtered')
-
-    # mag_x = calculateRollingAverage(mag_x, freq_fourth)
-    # mag_y = calculateRollingAverage(mag_y, freq_fourth)
-    # mag_z = calculateRollingAverage(mag_z, freq_fourth)
 
     mag_x = butter_lowpass_filter(mag_x, freq)
     mag_y = butter_lowpass_filter(mag_y, freq)
@@ -253,7 +237,8 @@ def extractGNSSData(data: List[GNSSData], inital_gnss_time: str = None):
     lat, lon, alt = [], [], []
     speed, heading, headingAccuracy = [], [], []
     hdop, gdop = [], []
-    time = []
+    system_time = []
+    # real_time, time_resolved = [], []
 
     if inital_gnss_time is None:
         initial_time = 0
@@ -262,7 +247,7 @@ def extractGNSSData(data: List[GNSSData], inital_gnss_time: str = None):
 
 
     for point in data:
-        cur_time = convertTimeToEpoch(point.time)
+        cur_time = convertTimeToEpoch(point.system_time)
         if cur_time >= initial_time:
             lat.append(point.lat)
             lon.append(point.lon)
@@ -272,12 +257,14 @@ def extractGNSSData(data: List[GNSSData], inital_gnss_time: str = None):
             headingAccuracy.append(point.headingAccuracy)
             hdop.append(point.hdop)
             gdop.append(point.gdop)
-            time.append(cur_time)
+            system_time.append(cur_time)
+            # real_time.append(convertTimeToEpoch(point.time))
+            # time_resolved.append(point.time_resolved)
 
-    freq = math.floor(calculateAverageFrequency(time))
-    # print(f"GNSS data frequency: {freq} Hz")
+    freq = math.floor(calculateAverageFrequency(system_time))
+    print(f"GNSS data frequency: {freq} Hz")
 
-    return lat, lon, alt, speed, heading, headingAccuracy, hdop, gdop, time, freq
+    return lat, lon, alt, speed, heading, headingAccuracy, hdop, gdop, system_time, freq
 
 
 def repair_time(time):
@@ -342,6 +329,7 @@ def calculate_mag_headings(mag_bundle, accel_bundle, position):
         # Calculate pitch and roll from accelerometer data
         pitch = math.atan2(-a_x, math.sqrt(a_y**2 + a_z**2))
         roll = math.atan2(a_y, a_z)
+        # print(f"Pitch: {math.degrees(pitch)}, Roll: {math.degrees(roll)}")
 
         # Compensate the magnetometer data
         m_x_prime = m_x * math.cos(roll) + m_z * math.sin(roll)

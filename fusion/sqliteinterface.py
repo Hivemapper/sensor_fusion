@@ -68,7 +68,7 @@ class MagData():
         return [self.mx, self.my, self.mz]
     
 class GNSSData():
-    def __init__(self, lat, lon, alt, speed, heading, headingAccuracy, hdop, gdop, time):
+    def __init__(self, lat, lon, alt, speed, heading, headingAccuracy, hdop, gdop, system_time):
         self.lat = lat
         self.lon = lon
         self.alt = alt
@@ -77,7 +77,9 @@ class GNSSData():
         self.headingAccuracy = headingAccuracy
         self.hdop = hdop
         self.gdop = gdop
-        self.time = time
+        self.system_time = system_time
+        # self.system_time = system_time
+        # self.time_resolved = time_resolved
 
     def getLatLon(self):
         return [self.lat, self.lon]
@@ -211,6 +213,30 @@ class SqliteInterface:
         results = [GNSSData(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]) for row in results]
         return results
     
+    # def queryGnss(self, desiredTime: int, pastRange: int = 250, order: str = DESC):
+    #     """
+    #     Queries the GNSS table for GNSS data for a given epoch timestamp.
+    #     IMPORTANT: GNSS dropping causes gaps in this data but otherwise the time is accurate
+    #     Args:
+    #         desiredTime (int): The epoch timestamp to query for sensor data.
+    #         pastRange (int, optional): The number of seconds before desiredTime to query for. Defaults to 250(quarter of a second).
+    #         order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'DESC'.
+    #     Returns:
+    #         list: A list of GNSSData objects containing the GNSS data.
+    #     """
+    #     min_time = convertEpochToTime(desiredTime - pastRange)
+    #     max_time = convertEpochToTime(desiredTime)
+    #     query = f'''
+    #                 SELECT latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, time, system_time, time_resolved
+    #                 FROM gnss 
+    #                 WHERE system_time > \'{min_time}\'
+    #                 AND system_time <= \'{max_time}\'
+    #                 ORDER BY system_time {order}
+    #             '''
+    #     results = self.cursor.execute(query).fetchall()
+    #     results = [GNSSData(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10]) for row in results]
+    #     return results
+    
     def table_exists(self, tableName):
         """
         Checks if the given table exists in the database.
@@ -322,8 +348,8 @@ class SqliteInterface:
         min_row_id = self.get_min_row_id(tableName)
 
         # Query to retrieve the smallest system_time value corresponding to the minimum row id
-        min_query = f"SELECT {timeVariable} FROM {tableName} WHERE id = ?"
-        min_result = self.cursor.execute(min_query, (min_row_id,)).fetchone()
+        min_query = f"SELECT {timeVariable} FROM {tableName} WHERE id = {min_row_id}"
+        min_result = self.cursor.execute(min_query).fetchone()
         min_system_time = min_result[0] if min_result else None
 
         # Query to retrieve the largest system_time value

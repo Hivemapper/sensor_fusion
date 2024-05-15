@@ -8,7 +8,6 @@ from fusion import (
     extractGNSSData,
     calculateHeading, 
     calculateAverageFrequency, 
-    calculateRollingAverage, 
     calibrate_mag, 
     convertTimeToEpoch,
     getCleanGNSSHeading,

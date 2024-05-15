@@ -92,9 +92,15 @@ def getCleanGNSSHeading(db_interface: SqliteInterface, current_time: int = None,
 
     # get data from the database
     gnss_data = db_interface.queryGnss(current_time, pastRange, ASC)
-    _, _, _, _, heading, headingAccuracy, _, _, gnss_time, _ = extractGNSSData(gnss_data)
+    # _, _, _, _, heading, headingAccuracy, _, _, gnss_system_time, _, _, _ = extractGNSSData(gnss_data)
+    _, _, _, _, heading, headingAccuracy, _, _, gnss_system_time, _, = extractGNSSData(gnss_data)
     # setup for heading correction
-    dataLength = len(heading)
+    clean_gnss_heading = getBestHeading(heading, headingAccuracy)
+
+    return clean_gnss_heading, gnss_system_time
+
+def getBestHeading(gnssHeadingData, gnssHeadingAccuracyData):
+    dataLength = len(gnssHeadingData)
     forward_loop = [None]*dataLength
     backward_loop = [None]*dataLength
     last_forward_good = None
@@ -104,12 +110,12 @@ def getCleanGNSSHeading(db_interface: SqliteInterface, current_time: int = None,
         forward_index = i
         backward_index = dataLength - 1 - i
         # Handle forward direction
-        if headingAccuracy[forward_index] < GNSS_HEADING_ACCURACY_THRESHOLD:
-            last_forward_good = heading[forward_index]
+        if gnssHeadingAccuracyData[forward_index] < GNSS_HEADING_ACCURACY_THRESHOLD:
+            last_forward_good = gnssHeadingData[forward_index]
         forward_loop[forward_index] = last_forward_good
         # Handle backward direction
-        if headingAccuracy[backward_index] < GNSS_HEADING_ACCURACY_THRESHOLD:
-            last_backward_good = heading[backward_index]
+        if gnssHeadingAccuracyData[backward_index] < GNSS_HEADING_ACCURACY_THRESHOLD:
+            last_backward_good = gnssHeadingData[backward_index]
         backward_loop[backward_index] = last_backward_good
     # correct the forward loop with the backward loop
     for i in range(dataLength):
@@ -117,9 +123,9 @@ def getCleanGNSSHeading(db_interface: SqliteInterface, current_time: int = None,
             if backward_loop[i] != None:
                 forward_loop[i] = backward_loop[i]
             else:
-                forward_loop[i] = heading[i]
-
-    return forward_loop, gnss_time
+                forward_loop[i] = gnssHeadingData[i]
+    return forward_loop
+    
 
 def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time: int = None, pastRange: int= None):
     """
@@ -139,6 +145,7 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time
     imu_data = db_interface.queryImuUsingRowID(current_time, pastRange, ASC)
     mag_data = db_interface.queryMagnetometerUsingRowID(current_time, pastRange, ASC)
     gnss_data = db_interface.queryGnss(current_time, pastRange, ASC)
+    print(f"IMU data length: {len(imu_data)}, Mag data length: {len(mag_data)}, GNSS data length: {len(gnss_data)}")
 
     # Trim beginning until vehicle is at rest
     starting_index = 0
@@ -155,24 +162,23 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time
         
     print(f"Starting index: {starting_index}")
     # Extract the data from the objects
-    acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_time, imu_freq = extractAndSmoothImuData(imu_data, gnss_data[starting_index].time)
-    mag_x, mag_y, mag_z, mag_time, mag_freq = extractAndSmoothMagData(mag_data, gnss_data[starting_index].time)
-    lats, lons, alts, speed, heading, headingAccuracy, hdop, gdop, gnss_time, gnssFreq = extractGNSSData(gnss_data, gnss_data[starting_index].time)
-    clean_gnss_heading, _ = getCleanGNSSHeading(db_interface, current_time, pastRange)
-    clean_gnss_heading = clean_gnss_heading[starting_index:]
-    print(f"clean heading length: {len(clean_gnss_heading)}, heading length: {len(heading)}")
+    acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_time, imu_freq = extractAndSmoothImuData(imu_data, gnss_data[starting_index].system_time)
+    mag_x, mag_y, mag_z, mag_time, mag_freq = extractAndSmoothMagData(mag_data, gnss_data[starting_index].system_time)
+    lats, lons, alts, speed, heading, headingAccuracy, hdop, gdop, gnss_system_time, gnssFreq = extractGNSSData(gnss_data, gnss_data[starting_index].system_time)
+    clean_gnss_heading = getBestHeading(heading, headingAccuracy)
+    # print(f"clean heading length: {len(clean_gnss_heading)}, heading length: {len(heading)}")
     # print(f" GNSS initial time: {gnss_time[0]}, IMU initial time: {imu_time[0]}, Mag initial time: {mag_time[0]}")
 
 
 
 
     # downsample the data to match GNSS frequency
-    acc_x_down = np.interp(gnss_time, imu_time, acc_x)
-    acc_y_down = np.interp(gnss_time, imu_time, acc_y)
-    acc_z_down = np.interp(gnss_time, imu_time, acc_z)
-    gyro_x_down = np.interp(gnss_time, imu_time, gyro_x)
-    gyro_y_down = np.interp(gnss_time, imu_time, gyro_y)
-    gyro_z_down = np.interp(gnss_time, imu_time, gyro_z)
+    acc_x_down = np.interp(gnss_system_time, imu_time, acc_x)
+    acc_y_down = np.interp(gnss_system_time, imu_time, acc_y)
+    acc_z_down = np.interp(gnss_system_time, imu_time, acc_z)
+    gyro_x_down = np.interp(gnss_system_time, imu_time, gyro_x)
+    gyro_y_down = np.interp(gnss_system_time, imu_time, gyro_y)
+    gyro_z_down = np.interp(gnss_system_time, imu_time, gyro_z)
     # mag_x_down = np.interp(gnss_time, mag_time, mag_x)
     # mag_y_down = np.interp(gnss_time, mag_time, mag_y)
     # mag_z_down = np.interp(gnss_time, mag_time, mag_z)
@@ -255,13 +261,13 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time
     # plot_signal_over_time(time_input, gyro_y_input, 'Gyro Y')
     # plot_signal_over_time(time_input, gyro_z_input, 'Gyro Z')
 
-    starting_num = len(acc_x_input)
-    acc_x_input[:starting_num] = [0.00001]*starting_num
-    acc_y_input[:starting_num] = [0.00001]*starting_num
-    acc_z_input[:starting_num] = [0.00001]*starting_num
-    gyro_x_input[:starting_num] = [0.00001]*starting_num
-    gyro_y_input[:starting_num] = [0.00001]*starting_num
-    gyro_z_input[:starting_num] = [0.00001]*starting_num
+    # starting_num = len(acc_x_input)
+    # acc_x_input[:starting_num] = [0.00001]*starting_num
+    # acc_y_input[:starting_num] = [0.00001]*starting_num
+    # acc_z_input[:starting_num] = [0.00001]*starting_num
+    # gyro_x_input[:starting_num] = [0.00001]*starting_num
+    # gyro_y_input[:starting_num] = [0.00001]*starting_num
+    # gyro_z_input[:starting_num] = [0.00001]*starting_num
     # mag_x_input[:starting_num] = [0.00001]*starting_num
     # mag_y_input[:starting_num] = [0.00001]*starting_num
     # mag_z_input[:starting_num] = [0.00001]*starting_num
@@ -286,7 +292,6 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time
     acc_bundle = np.array(list(zip(acc_x_input, acc_y_input, acc_z_input)))
     gyro_bundle = np.array(list(zip(gyro_x_input, gyro_y_input, gyro_z_input)))
 
-    # print(f"heading: {heading[0]}, clean_gnss_heading: {clean_gnss_heading[0]}")
 
     initialPosition = [lats[0], lons[0], alts[0]]
     for i in range(len(lats)):
@@ -295,13 +300,6 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time
             break
 
     initialHeading = clean_gnss_heading[0]
-    ### Covariance matrix
-    # P = [
-    #     [ 1.03503015e-05, -5.03595339e-06, -5.79910035e-06, -2.25042690e-07],
-    #     [-5.03595339e-06,  3.74206730e-05,  4.71497232e-05,  9.90866868e-07],
-    #     [-5.79910035e-06,  4.71497232e-05,  6.00017114e-05,  2.19874434e-06],
-    #     [-2.25042690e-07,  9.90866868e-07,  2.19874434e-06,  9.67468524e-06],
-    # ]
     P = None
     fused_heading, fused_pitch, fused_roll = calculateHeading(acc_bundle, gyro_bundle, calibrated_mag_bundle, time_input, initialHeading, initialPosition, freq_input, P)
     mag_calc_heading = calculate_mag_headings(calibrated_mag_bundle, acc_bundle, initialPosition)
@@ -312,18 +310,15 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time
     fused_pitch = [pitch_val + 360 if pitch_val < 0 else pitch_val for pitch_val in fused_pitch]
     fused_roll = [roll_val + 360 if roll_val < 0 else roll_val for roll_val in fused_roll]
 
-    # print(f"Initial Heading: {initialHeading}, Fused Heading: {fused_heading[0]}")
-
-    fused_heading = np.interp(gnss_time, time_input, fused_heading)
-    fused_pitch = np.interp(gnss_time, time_input, fused_pitch)
-    fused_roll = np.interp(gnss_time, time_input, fused_roll)
-    mag_calc_heading = np.interp(gnss_time, time_input, mag_calc_heading)
-    imu_vel = np.interp(gnss_time, time_input, imu_vel)
+    fused_heading = np.interp(gnss_system_time, time_input, fused_heading)
+    fused_pitch = np.interp(gnss_system_time, time_input, fused_pitch)
+    fused_roll = np.interp(gnss_system_time, time_input, fused_roll)
+    mag_calc_heading = np.interp(gnss_system_time, time_input, mag_calc_heading)
+    imu_vel = np.interp(gnss_system_time, time_input, imu_vel)
 
     clean_heading_diff = []
     for i in range(len(clean_gnss_heading)):
         clean_heading_diff.append((fused_heading[i] - clean_gnss_heading[i] + 180) % 360 - 180)
-
 
     step_size = 10
     number_of_points = []
@@ -341,21 +336,21 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time
     sys.path.insert(0, '/Users/rogerberman/sensor-fusion/testingScripts')  # Add the project root to the Python path
     from testingScripts.plottingCode import plot_signal_over_time, plot_signals_over_time
     import matplotlib.pyplot as plt
-    plot_signal_over_time(number_of_points, mean_diff, 'Clean Heading Diff Mean')
-    # plot_signal_over_time(gnss_time, clean_heading_diff, 'Clean Heading Diff')
+    # plot_signal_over_time(number_of_points, mean_diff, 'Clean Heading Diff Mean')
+    # plot_signal_over_time(gnss_system_time, clean_heading_diff, 'Clean Heading Diff')
     # print(f"Initial Clean GNSS Heading: {clean_gnss_heading[0]}, Fused Heading: {fused_heading[0]}")
 
 
-    # plot_signals_over_time(gnss_time, clean_gnss_heading, mag_calc_heading, 'Clean GNSS Heading', 'Mag Calc Heading')
-    # plot_signals_over_time(gnss_time, speed, imu_vel, 'GNSS Speed', 'IMU Forward Velocity')
-    plot_signals_over_time(gnss_time, clean_gnss_heading, fused_heading, 'Clean GNSS Heading', 'Fused Heading')
-    # plot_signal_over_time(gnss_time, fused_pitch, 'Pitch')
-    # plot_signal_over_time(gnss_time, fused_roll, 'Roll')
+    plot_signals_over_time(gnss_system_time, clean_gnss_heading, mag_calc_heading, 'Clean GNSS Heading', 'Mag Calc Heading')
+    # plot_signals_over_time(gnss_system_time, speed, imu_vel, 'GNSS Speed', 'IMU Forward Velocity')
+    # plot_signals_over_time(gnss_system_time, clean_gnss_heading, fused_heading, 'Clean GNSS Heading', 'Fused Heading')
+    # plot_signal_over_time(gnss_system_time, fused_pitch, 'Pitch')
+    # plot_signal_over_time(gnss_system_time, fused_roll, 'Roll')
 
     # for angle in range(18, 10, -2):
     #     imu_vel = calculate_imu_forward_velocity(acc_bundle, time_input, speed, angle)
-    #     imu_vel = np.interp(gnss_time, time_input, imu_vel)
-    #     plot_signals_over_time(gnss_time, speed, imu_vel, 'GNSS Speed', f'IMU Forward Velocity: {angle} degrees')
+    #     imu_vel = np.interp(gnss_system_time, time_input, imu_vel)
+    #     plot_signals_over_time(gnss_system_time, speed, imu_vel, 'GNSS Speed', f'IMU Forward Velocity: {angle} degrees')
 
 
     plt.show()
