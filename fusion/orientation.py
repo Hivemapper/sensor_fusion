@@ -261,26 +261,6 @@ def getDashcamToVehicleHeadingOffset(db_interface: SqliteInterface, current_time
     # plot_signal_over_time(time_input, gyro_y_input, 'Gyro Y')
     # plot_signal_over_time(time_input, gyro_z_input, 'Gyro Z')
 
-    # starting_num = len(acc_x_input)
-    # acc_x_input[:starting_num] = [0.00001]*starting_num
-    # acc_y_input[:starting_num] = [0.00001]*starting_num
-    # acc_z_input[:starting_num] = [0.00001]*starting_num
-    # gyro_x_input[:starting_num] = [0.00001]*starting_num
-    # gyro_y_input[:starting_num] = [0.00001]*starting_num
-    # gyro_z_input[:starting_num] = [0.00001]*starting_num
-    # mag_x_input[:starting_num] = [0.00001]*starting_num
-    # mag_y_input[:starting_num] = [0.00001]*starting_num
-    # mag_z_input[:starting_num] = [0.00001]*starting_num
-
-    # acc_x_input = acc_x_input[:starting_num]
-    # acc_y_input = acc_y_input[:starting_num]
-    # acc_z_input = acc_z_input[:starting_num]
-    # gyro_x_input = gyro_x_input[:starting_num]
-    # gyro_y_input = gyro_y_input[:starting_num]
-    # gyro_z_input = gyro_z_input[:starting_num]
-    # time_input = time_input[:starting_num]
-    
-
     # print(f"Accel offsets: {acc_x_down_zero_speed_avg}, {acc_y_down_zero_speed_avg}, {acc_z_down_zero_speed_avg}")
     # print(f"Gyro offsets: {gyro_x_down_zero_speed_avg}, {gyro_y_down_zero_speed_avg}, {gyro_z_down_zero_speed_avg}")
 

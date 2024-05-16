@@ -1,5 +1,6 @@
 import os
 import sys
+from processDBs import validate_dbs, process_db_file_for_individual_drives
 sys.path.insert(0, '/Users/rogerberman/sensor-fusion')  # Add the project root to the Python path
 import numpy as np
 from fusion import (
@@ -54,44 +55,37 @@ def process_db_and_visualize(dbpath: str):
         pastRange=pastRange, 
     )
 
-
 if __name__ == "__main__":
     # Load data and filter data
-    # dir_path = '/Users/rogerberman/dev_ground/CTP-decoded-05-14-2024'
-    dir_path = '/Users/rogerberman/dev_ground/CtpDbsDecoded'
-    drives = {}
-    for user in os.listdir(dir_path):
-        if os.path.isdir(os.path.join(dir_path, user)):
-            drives[user] = []
-            for drive in os.listdir(os.path.join(dir_path, user)):
-                if '-shm' not in drive and '-wal' not in drive and '.db' in drive:
-                    file_path = os.path.join(dir_path, user, drive)
-                    if os.path.isfile(file_path) and os.path.getsize(file_path) > 0:
-                        sql_db = SqliteInterface(file_path)
-                        # check for existence of mag table
-                        if sql_db.table_exists('magnetometer'):
-                            # check to ensure data is written to mag table
-                            try:
-                                if sql_db.get_min_max_system_time('magnetometer') != (None, None):
-                                    drives[user].append(file_path)
-                            except Exception as e:
-                                print(f"Error: {e}")
+    dir_path = '/Users/rogerberman/dev_ground/CTP-decoded-05-14-2024'
+    # dir_path = '/Users/rogerberman/dev_ground/CtpDbsDecoded'
+    drives = validate_dbs(dir_path)
+    print("Validation Done")
 
-    # print(f"Drives: {drives}")
-    malformed_count = 0
-    total_count = 0
+
     for user in drives:
         for drive_path in drives[user]:
             try:
-                total_count += 1
-                # if 'exotic-purple-mapmaker/2024-05-14T13:31:35.000Z.db' in drive_path:
-                process_db_and_visualize(drive_path)
+                process_db_file_for_individual_drives(drive_path)
             except Exception as e:
                 print(f"Error: {e}")
-                if 'malformed' in str(e):
-                    malformed_count += 1
-                exit(1)
-    print(f"Malformed count: {malformed_count}, total count: {total_count}")
+
+
+
+    # malformed_count = 0
+    # total_count = 0
+    # for user in drives:
+    #     for drive_path in drives[user]:
+    #         try:
+    #             total_count += 1
+    #             # if 'exotic-purple-mapmaker/2024-05-14T13:31:35.000Z.db' in drive_path:
+    #             process_db_and_visualize(drive_path)
+    #         except Exception as e:
+    #             print(f"Error: {e}")
+    #             if 'malformed' in str(e):
+    #                 malformed_count += 1
+    #             exit(1)
+    # print(f"Malformed count: {malformed_count}, total count: {total_count}")
 
 
     ### Old Drives
