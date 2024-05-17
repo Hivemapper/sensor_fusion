@@ -28,6 +28,27 @@ def calculateAverageFrequency(epoch_times_ms):
     
     return average_frequency
 
+def calculate_rates_and_counts(timestamps):
+    rates = []
+    for i in range(1, len(timestamps)):
+        time_diff = timestamps[i] - timestamps[i - 1]
+        period = time_diff / 1000.0  # Convert milliseconds to seconds
+        rate = 1.0 / period if period != 0 else 0 # Avoid division by zero
+        rounded_rate = math.floor(rate)  # Floor the rate to keep it at the ones place
+        rates.append(rounded_rate)
+
+    # Initialize an empty dictionary to store rate counts
+    rate_counts = {}
+
+    # Count occurrences of each rate
+    for rate in rates:
+        if rate in rate_counts:
+            rate_counts[rate] += 1
+        else:
+            rate_counts[rate] = 1
+
+    return rate_counts
+
 def calculateRollingAverage(data, window_size):
     """
     Calculates the rolling average of a list of numbers using numpy,
@@ -144,7 +165,7 @@ def extractAndSmoothImuData(imu_data: List[IMUData], inital_gnss_time: str = Non
         initial_time = convertTimeToEpoch(inital_gnss_time)
 
     for point in imu_data:
-        cur_time = convertTimeToEpoch(point.time)
+        cur_time = convertTimeToEpoch(point.system_time)
         if cur_time >= initial_time:
             acc_x.append(point.ax)
             acc_y.append(point.ay)
@@ -154,7 +175,7 @@ def extractAndSmoothImuData(imu_data: List[IMUData], inital_gnss_time: str = Non
             gyro_z.append(math.radians(point.gz))
             time.append(cur_time)
 
-    time = repair_time(time)
+    # time = repair_time(time)
 
     freq = math.floor(calculateAverageFrequency(time))
     print(f"IMU data frequency: {freq} Hz")
@@ -200,7 +221,7 @@ def extractAndSmoothMagData(data: List[MagData], inital_gnss_time: str):
             mag_z.append(point.mz)
             time.append(cur_time)
 
-    time = repair_time(time)
+    # time = repair_time(time)
 
     freq = math.floor(calculateAverageFrequency(time))
     print(f"Magnetometer data frequency: {freq} Hz")
@@ -238,7 +259,7 @@ def extractGNSSData(data: List[GNSSData], inital_gnss_time: str = None):
     speed, heading, headingAccuracy = [], [], []
     hdop, gdop = [], []
     system_time = []
-    # real_time, time_resolved = [], []
+    gnss_real_time, time_resolved = [], []
 
     if inital_gnss_time is None:
         initial_time = 0
@@ -258,13 +279,13 @@ def extractGNSSData(data: List[GNSSData], inital_gnss_time: str = None):
             hdop.append(point.hdop)
             gdop.append(point.gdop)
             system_time.append(cur_time)
-            # real_time.append(convertTimeToEpoch(point.time))
-            # time_resolved.append(point.time_resolved)
+            gnss_real_time.append(convertTimeToEpoch(point.time))
+            time_resolved.append(point.time_resolved)
 
     freq = math.floor(calculateAverageFrequency(system_time))
     print(f"GNSS data frequency: {freq} Hz")
 
-    return lat, lon, alt, speed, heading, headingAccuracy, hdop, gdop, system_time, freq
+    return lat, lon, alt, speed, heading, headingAccuracy, hdop, gdop, system_time, gnss_real_time, time_resolved, freq
 
 
 def repair_time(time):

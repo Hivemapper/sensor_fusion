@@ -70,6 +70,35 @@ def plot_signals_over_time(seconds, signal1_values, signal2_values, signal1_labe
     else:
         plt.show(block=False)  # Display the plot if no file path is provided
 
+def plot_rate_counts(rate_counts, title):
+    rates = list(rate_counts.keys())
+    counts = list(rate_counts.values())
+
+    # Create a bar graph
+    plt.figure(figsize=(10, 6))
+    bars = plt.bar(rates, counts, color='blue')
+
+    # Add titles and labels
+    plt.title(title)
+    plt.xlabel('Rate (Hz)')
+    plt.ylabel('Count')
+
+    # Set x-axis ticks to be evenly distributed
+    min_rate = min(rates)
+    max_rate = max(rates)
+    plt.xticks(range(min_rate, max_rate + 1))
+
+    # Add grid
+    plt.grid(True)
+
+    # Ensure bars are in front of grid
+    for bar in bars:
+        bar.set_zorder(2)
+
+    # Add count over each bar
+    for bar, count in zip(bars, counts):
+        plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height(), str(count),
+                 ha='center', va='bottom')
 
 def create_map(latitude, longitude, heading, map_filename, plot_every=1):
     """

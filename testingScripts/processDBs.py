@@ -21,6 +21,8 @@ from fusion import (
 from plottingCode import plot_signal_over_time, plot_signals_over_time, create_map
 import matplotlib.pyplot as plt
 
+SESSION_DATA_MINIMUM = 8*60*5 # 5 minutes of data at 8 Hz
+
 
 def validate_dbs(dir_path):
     drives = {}
@@ -92,7 +94,6 @@ def process_db_file_for_individual_drives(filename):
     gnss_data = sql_db.queryAllGnss()
     imu_data = sql_db.queryAllImu()
     mag_data = sql_db.queryAllMagnetometer()
-    print(f"GNSS data: {len(gnss_data)}, IMU data: {len(imu_data)}, Mag data: {len(mag_data)}")
     # get unique session ids for all three
     gnss_sessions = set([d.session for d in gnss_data])
     imu_sessions = set([d.session for d in imu_data])
@@ -106,20 +107,20 @@ def process_db_file_for_individual_drives(filename):
         mag_sessions.remove('')
     # only look at data where session exists in all three
     common_sessions = gnss_sessions.intersection(imu_sessions).intersection(mag_sessions)
-    print(f"Common sessions: {common_sessions}")
-    print(f"GNSS sessions: {gnss_sessions}")
-    print(f"IMU sessions: {imu_sessions}")
-    print(f"Mag sessions: {mag_sessions}")
+    useable_sessions = {}
     # split out data into each individual common session
     for session in common_sessions:
         gnss_data_session = [d for d in gnss_data if d.session == session]
         imu_data_session = [d for d in imu_data if d.session == session]
         mag_data_session = [d for d in mag_data if d.session == session]
-        print(f"Session: {session}, GNSS data: {len(gnss_data_session)}, IMU data: {len(imu_data_session)}, Mag data: {len(mag_data_session)}")
-        # check if there is enough data to process
-        DATA_MINIMUM = 100
-        if len(gnss_data_session) < DATA_MINIMUM or len(imu_data_session) < DATA_MINIMUM or len(mag_data_session) < DATA_MINIMUM:
+        # ensure enough data to be useful
+        if (len(gnss_data_session) < SESSION_DATA_MINIMUM or
+            len(imu_data_session) < SESSION_DATA_MINIMUM or
+            len(mag_data_session) < SESSION_DATA_MINIMUM):
             print(f"Not enough data to process for session {session}")
             continue
+        print(f"Session: {session}, GNSS data: {len(gnss_data_session)}, IMU data: {len(imu_data_session)}, Mag data: {len(mag_data_session)}")
+        useable_sessions[session] = {'gnss_data': gnss_data_session, 'imu_data': imu_data_session, 'mag_data': mag_data_session}
+    return useable_sessions
 
 

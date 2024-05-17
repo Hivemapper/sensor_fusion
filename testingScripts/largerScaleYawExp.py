@@ -23,41 +23,10 @@ from plottingCode import plot_signal_over_time, plot_signals_over_time, create_m
 import matplotlib.pyplot as plt
 
 
-def process_db_and_visualize(dbpath: str):
-    print(f"*********Loading data from {dbpath}")
-    sql_db = SqliteInterface(dbpath)
-    gnss_min_time, gnss_max_time = sql_db.get_min_max_system_time('gnss')
-    imu_min_time, imu_max_time = sql_db.get_min_max_system_time('imu')
-    mag_min_time, mag_max_time = sql_db.get_min_max_system_time('magnetometer')
-    print(f"GNSS min time: {gnss_min_time}, GNSS max time: {gnss_max_time}")
-    print(f"IMU min time: {imu_min_time}, IMU max time: {imu_max_time}")
-    print(f"Mag min time: {mag_min_time}, Mag max time: {mag_max_time}")
-    # # convert all to epoch
-    epoch_gnss_min_time = convertTimeToEpoch(gnss_min_time)
-    epoch_gnss_max_time = convertTimeToEpoch(gnss_max_time)
-    epoch_imu_min_time = convertTimeToEpoch(imu_min_time)
-    epoch_imu_max_time = convertTimeToEpoch(imu_max_time)
-    epoch_mag_min_time = convertTimeToEpoch(mag_min_time)
-    epoch_mag_max_time = convertTimeToEpoch(mag_max_time)
-    # get the max min times
-    min_time = min(epoch_gnss_min_time, epoch_imu_min_time, epoch_mag_min_time)
-    max_time = max(epoch_gnss_max_time, epoch_imu_max_time, epoch_mag_max_time)
-    total_time = max_time - min_time 
-    converted_total_time = convertEpochToTime(total_time)
-    print(f"Total time: {converted_total_time}")
-
-    current_time = max_time
-    pastRange = current_time - min_time
-    # print(f"Current time: {current_time}, Past range: {pastRange}")
-    heading_diff_mean = getDashcamToVehicleHeadingOffset(
-        sql_db, 
-        current_time=current_time, 
-        pastRange=pastRange, 
-    )
-
 if __name__ == "__main__":
     # Load data and filter data
-    dir_path = '/Users/rogerberman/dev_ground/CTP-decoded-05-14-2024'
+    dir_path = '/Users/rogerberman/dev_ground/CTP-decoded-05-14-2024-recovered'
+    # dir_path = '/Users/rogerberman/dev_ground/CTP-decoded-05-14-2024'
     # dir_path = '/Users/rogerberman/dev_ground/CtpDbsDecoded'
     drives = validate_dbs(dir_path)
     print("Validation Done")
@@ -65,8 +34,10 @@ if __name__ == "__main__":
 
     for user in drives:
         for drive_path in drives[user]:
+            usable_drives = process_db_file_for_individual_drives(drive_path)
             try:
-                process_db_file_for_individual_drives(drive_path)
+                for session in usable_drives:
+                    getDashcamToVehicleHeadingOffset(usable_drives[session], session)
             except Exception as e:
                 print(f"Error: {e}")
 
