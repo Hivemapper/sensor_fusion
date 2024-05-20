@@ -70,6 +70,36 @@ def plot_signals_over_time(seconds, signal1_values, signal2_values, signal1_labe
     else:
         plt.show(block=False)  # Display the plot if no file path is provided
 
+def plot_sensor_data(time_series, x_series, y_series, z_series, sensor_name, title="Sensor Data"):
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 8))
+
+    # Plot x-axis data
+    ax1.plot(time_series, x_series, color='r')
+    ax1.set_xlabel('Time')
+    ax1.set_ylabel(f'{sensor_name} X')
+    ax1.set_title(f'{sensor_name} X-Axis')
+    ax1.grid(True)
+
+    # Plot y-axis data
+    ax2.plot(time_series, y_series, color='g')
+    ax2.set_xlabel('Time')
+    ax2.set_ylabel(f'{sensor_name} Y')
+    ax2.set_title(f'{sensor_name} Y-Axis')
+    ax2.grid(True)
+
+    # Plot z-axis data
+    ax3.plot(time_series, z_series, color='b')
+    ax3.set_xlabel('Time')
+    ax3.set_ylabel(f'{sensor_name} Z')
+    ax3.set_title(f'{sensor_name} Z-Axis')
+    ax3.grid(True)
+
+    # Set overall title
+    plt.suptitle(title)
+
+    # Adjust layout to prevent overlap
+    plt.tight_layout()
+
 def plot_rate_counts(rate_counts, title):
     rates = list(rate_counts.keys())
     counts = list(rate_counts.values())

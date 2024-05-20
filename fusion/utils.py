@@ -175,20 +175,8 @@ def extractAndSmoothImuData(imu_data: List[IMUData], inital_gnss_time: str = Non
             gyro_z.append(math.radians(point.gz))
             time.append(cur_time)
 
-    # time = repair_time(time)
-
     freq = math.floor(calculateAverageFrequency(time))
     print(f"IMU data frequency: {freq} Hz")
-
-    # import sys
-    # sys.path.insert(0, '/Users/rogerberman/sensor-fusion/testingScripts')  # Add the project root to the Python path
-    # from testingScripts.plottingCode import plot_signal_over_time, plot_signals_over_time
-    # plot_signals_over_time(time, acc_x ,butter_lowpass_filter(acc_x, freq), 'acc x unfilterd', 'acc x filtered')
-    # plot_signals_over_time(time, acc_y, butter_lowpass_filter(acc_y, freq), 'acc y unfilterd', 'acc y filtered')
-    # plot_signals_over_time(time, acc_z, butter_lowpass_filter(acc_z, freq), 'acc z unfilterd', 'acc z filtered')
-    # plot_signals_over_time(time, gyro_x ,butter_lowpass_filter(gyro_x, freq), 'gyro x unfilterd', 'gyro x filtered')
-    # plot_signals_over_time(time, gyro_y, butter_lowpass_filter(gyro_y, freq), 'gyro y unfilterd', 'gyro y filtered')
-    # plot_signals_over_time(time, gyro_z, butter_lowpass_filter(gyro_z, freq), 'gyro z unfilterd', 'gyro z filtered')
 
     acc_x = butter_lowpass_filter(acc_x, freq)
     acc_y = butter_lowpass_filter(acc_y, freq)
@@ -196,7 +184,6 @@ def extractAndSmoothImuData(imu_data: List[IMUData], inital_gnss_time: str = Non
     gyro_x = butter_lowpass_filter(gyro_x, freq)
     gyro_y = butter_lowpass_filter(gyro_y, freq)
     gyro_z = butter_lowpass_filter(gyro_z, freq)
-
 
     return acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, time, freq
 
@@ -221,18 +208,8 @@ def extractAndSmoothMagData(data: List[MagData], inital_gnss_time: str):
             mag_z.append(point.mz)
             time.append(cur_time)
 
-    # time = repair_time(time)
-
     freq = math.floor(calculateAverageFrequency(time))
     print(f"Magnetometer data frequency: {freq} Hz")
-
-    # import sys
-    # sys.path.insert(0, '/Users/rogerberman/sensor-fusion/testingScripts')  # Add the project root to the Python path
-    # from testingScripts.plottingCode import plot_signal_over_time, plot_signals_over_time
-    # import matplotlib.pyplot as plt
-    # plot_signals_over_time(time, mag_x ,butter_lowpass_filter(mag_x, freq), 'mag x unfilterd', 'mag x filtered')
-    # plot_signals_over_time(time, mag_y, butter_lowpass_filter(mag_y, freq), 'mag y unfilterd', 'mag y filtered')
-    # plot_signals_over_time(time, mag_z, butter_lowpass_filter(mag_z, freq), 'mag z unfilterd', 'mag z filtered')
 
     mag_x = butter_lowpass_filter(mag_x, freq)
     mag_y = butter_lowpass_filter(mag_y, freq)
@@ -286,48 +263,6 @@ def extractGNSSData(data: List[GNSSData], inital_gnss_time: str = None):
     print(f"GNSS data frequency: {freq} Hz")
 
     return lat, lon, alt, speed, heading, headingAccuracy, hdop, gdop, system_time, gnss_real_time, time_resolved, freq
-
-
-def repair_time(time):
-    # Repair imu and mag time when gnss drops
-    DAY_IN_MS = 1000 * 60 * 60 * 24
-    repaired_time = []
-    repaired_time.append(time[0])
-    
-    # Find pairs of indices where time needs to be repaired
-    offset = 0
-    first = False
-    for i in range(1, len(time)):
-        time_diff = time[i] - time[i - 1]
-
-        # identify when gnss drops occur
-        if time_diff <= -DAY_IN_MS:
-            print(f"GNSS DROP: Time difference: {time_diff} at index {i}")
-            offset = abs(time_diff)
-            first = True
-        elif time_diff >= DAY_IN_MS:
-            offset = 0
-        
-        # apply offset due to gnss drops
-        # first case apply average period to compensate for the drop(best? compensation for the first drop)
-        if offset > 0 and first:
-            time_diffs = [repaired_time[i] - repaired_time[i - 1] for i in range(1, len(repaired_time))]
-            average_period = sum(time_diffs) / len(time_diffs)
-            offset = offset + average_period
-            first = False
-            repaired_time.append(time[i] + offset)
-        # second case apply offset to the rest of the time where drop occurs
-        elif offset > 0 and not first:
-            repaired_time.append(time[i] + offset)
-        # no drop append as normal
-        else:
-            repaired_time.append(time[i])
-
-    # Check if the length of the time list changed
-    if len(time) != len(repaired_time):
-        print(f"Error: Time list length changed from {len(time)} to {len(repaired_time)}")
-    return repaired_time
-
 
 
 def calculate_mag_headings(mag_bundle, accel_bundle, position):

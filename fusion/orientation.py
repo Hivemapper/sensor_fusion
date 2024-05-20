@@ -173,8 +173,8 @@ def getDashcamToVehicleHeadingOffset(drive_data: dict, session: str = None):
     plot_rate_counts(mag_rates, f'Mag Freq Rate, Session:{session}')
 
 
-    # plot_signal_over_time(list(range(len(gnss_system_time))), gnss_system_time, 'GNSS Time')
-    # plot_signal_over_time(list(range(len(imu_time))), imu_time, 'IMU Time')
+    plot_signal_over_time(list(range(len(gnss_system_time))), gnss_system_time, 'GNSS Time')
+    plot_signal_over_time(list(range(len(imu_time))), imu_time, 'IMU Time')
     plot_signal_over_time(list(range(len(mag_time))), mag_time, 'Mag Time')
     plt.show()
 
