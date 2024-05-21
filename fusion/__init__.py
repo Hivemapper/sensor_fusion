@@ -20,5 +20,6 @@ from .utils import (
     extractAndSmoothMagData,
     extractGNSSData,
     calculate_rates_and_counts,
+    butter_lowpass_filter,
 )
 from .ellipsoid_fit import calibrate_mag

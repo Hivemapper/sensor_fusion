@@ -19,8 +19,6 @@ from fusion import (
     GNSS_HEADING_ACCURACY_THRESHOLD,
     ASC,
 )
-from plottingCode import plot_signal_over_time, plot_signals_over_time, create_map
-import matplotlib.pyplot as plt
 
 SESSION_DATA_MINIMUM = 8*60*5 # 5 minutes of data at 8 Hz
 
