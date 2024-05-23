@@ -22,6 +22,50 @@ from fusion import (
 
 SESSION_DATA_MINIMUM = 8*60*5 # 5 minutes of data at 8 Hz
 
+def validate_db_file(file_path):
+    if not os.path.isfile(file_path) or os.path.getsize(file_path) == 0:
+        print(file_path, "File does not exist or is empty")
+        return None, None
+
+    try:
+        # Assume hdcs and check for magnetometer table
+        camera_type = 'hdc'
+        sql_db = SqliteInterface(file_path)
+        # Check for HDCS
+        if sql_db.table_exists('magnetometer'):
+            mag_data = sql_db.queryAllMagnetometer()
+            if len(mag_data) > 0:
+                camera_type = 'hdcs'
+
+        # Attempt to pull all data from the database to check for malformed data
+        gnss_data = sql_db.queryAllGnss()
+        imu_data = sql_db.queryAllImu()
+        if len(gnss_data) == 0 or len(imu_data) == 0:
+            print(file_path, "No data in one of the tables")
+            return None, None
+
+        # Check for sessions
+        gnss_sessions = set([d.session for d in gnss_data])
+        imu_sessions = set([d.session for d in imu_data])
+        if camera_type == 'hdcs':
+            mag_sessions = set([d.session for d in mag_data])
+        if len(gnss_sessions) == 0 or len(imu_sessions) == 0:
+            print(file_path, "No sessions in one of the tables")
+            return None, None
+        if camera_type == 'hdcs' and len(mag_sessions) == 0:
+            print(file_path, "No sessions in magnetometer table")
+            return None, None
+        # guard against empty sessions
+        if len(gnss_sessions) == 1 and '' in gnss_sessions:
+            print(file_path, "Empty session in GNSS table")
+            return None, None
+
+        return file_path, camera_type
+    except Exception as e:
+        print(file_path, str(e))
+        return None, None
+
+
 def validate_user_dir(user_path, drives_queue, failed_files_queue):
     drives = []
     failed_files = []

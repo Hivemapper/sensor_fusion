@@ -112,8 +112,7 @@ if __name__ == "__main__":
         for drive_info in sorted(drives[user]):
             db_file_path = drive_info[0]
             camera_type = drive_info[1]
-            if camera_type != 'hdcs':
-                continue
+            print(f"Processing File: {db_file_path}")
             usable_drives = process_db_file_for_individual_drives(db_file_path, camera_type)
             try:
                 for session in usable_drives:
@@ -190,9 +189,7 @@ if __name__ == "__main__":
 
                     # acc_res = acc_x_stopped & acc_y_stopped & acc_z_stopped
                     acc_res = ((acc_x_stopped & acc_y_stopped) | (acc_y_stopped & acc_z_stopped) | (acc_x_stopped & acc_z_stopped)).astype(int)
-                    # gyro_res = gyro_x_stopped & gyro_y_stopped & gyro_z_stopped
                     gyro_res = ((gyro_x_stopped & gyro_y_stopped) | (gyro_y_stopped & gyro_z_stopped) | (gyro_x_stopped & gyro_z_stopped)).astype(int)
-                    # gyro_res = np.where(gyro_res == 0, 10, 0)
                     combined_gyro_accel = acc_res | gyro_res
 
                     for i in range(len(hdop)):
