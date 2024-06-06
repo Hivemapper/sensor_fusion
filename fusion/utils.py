@@ -3,13 +3,9 @@ import math
 from typing import List
 from scipy.signal import butter, filtfilt
 
-from .sqliteinterface import (
-    convertTimeToEpoch,
-    IMUData, 
-    MagData, 
-    GNSSData
-)
+from .sqliteinterface import convertTimeToEpoch, IMUData, MagData, GNSSData
 from ahrs.utils.wmm import WMM
+
 
 def calculateAverageFrequency(epoch_times_ms):
     """
@@ -21,19 +17,23 @@ def calculateAverageFrequency(epoch_times_ms):
     """
     if len(epoch_times_ms) < 2:
         return 0
-    
-    periods_seconds = [(epoch_times_ms[i] - epoch_times_ms[i-1]) / 1000.0 for i in range(1, len(epoch_times_ms))]
+
+    periods_seconds = [
+        (epoch_times_ms[i] - epoch_times_ms[i - 1]) / 1000.0
+        for i in range(1, len(epoch_times_ms))
+    ]
     average_period_seconds = sum(periods_seconds) / len(periods_seconds)
     average_frequency = 1 / average_period_seconds if average_period_seconds != 0 else 0
-    
+
     return average_frequency
+
 
 def calculate_rates_and_counts(timestamps):
     rates = []
     for i in range(1, len(timestamps)):
         time_diff = timestamps[i] - timestamps[i - 1]
         period = time_diff / 1000.0  # Convert milliseconds to seconds
-        rate = 1.0 / period if period != 0 else 0 # Avoid division by zero
+        rate = 1.0 / period if period != 0 else 0  # Avoid division by zero
         rounded_rate = math.floor(rate)  # Floor the rate to keep it at the ones place
         rates.append(rounded_rate)
 
@@ -47,7 +47,8 @@ def calculate_rates_and_counts(timestamps):
         else:
             rate_counts[rate] = 1
 
-    return rate_counts
+    return rate_counts, rates
+
 
 def calculateRollingAverage(data, window_size):
     """
@@ -69,11 +70,14 @@ def calculateRollingAverage(data, window_size):
     # For even window sizes, reduce the padding by 1 at the start
     start_pad_size = pad_size if window_size % 2 != 0 else pad_size - 1
     # Pad the beginning with the first element and the end with the last element
-    padded_data = np.pad(data, (start_pad_size, pad_size), 'edge')
+    padded_data = np.pad(data, (start_pad_size, pad_size), "edge")
     # Calculate the rolling average using 'valid' mode
-    rolling_avg = np.convolve(padded_data, np.ones(window_size) / window_size, mode='valid')
+    rolling_avg = np.convolve(
+        padded_data, np.ones(window_size) / window_size, mode="valid"
+    )
 
     return rolling_avg
+
 
 def calculateAngularChange(headings, times):
     """
@@ -87,11 +91,11 @@ def calculateAngularChange(headings, times):
     angular_changes = []
     for i in range(1, len(headings)):
         # Calculate time difference
-        time_diff = times[i] - times[i-1]
+        time_diff = times[i] - times[i - 1]
         # Calculate angular change, accounting for angle wrap-around
-        angle_diff = (headings[i] - headings[i-1] + 180) % 360 - 180
+        angle_diff = (headings[i] - headings[i - 1] + 180) % 360 - 180
         angular_changes.append(math.radians(angle_diff))
-    
+
     return angular_changes
 
 
@@ -121,19 +125,27 @@ def calculateAttributesAverage(data_list):
     """
     if not data_list:
         return None
-    
+
     if len(data_list) == 1:
-        return {k: v for k, v in data_list[0].__dict__.items() if isinstance(v, (int, float))}
-    
+        return {
+            k: v
+            for k, v in data_list[0].__dict__.items()
+            if isinstance(v, (int, float))
+        }
+
     sum_values = {}
     count_values = {}
-    attribute_names = [attr for attr in dir(data_list[0]) if not attr.startswith("__") and not callable(getattr(data_list[0], attr))]
+    attribute_names = [
+        attr
+        for attr in dir(data_list[0])
+        if not attr.startswith("__") and not callable(getattr(data_list[0], attr))
+    ]
 
     # Initialize sum_values and count_values dictionaries
     for attr in attribute_names:
         sum_values[attr] = 0
         count_values[attr] = 0
-    
+
     # Sum up values for each attribute, only if they are numeric
     for instance in data_list:
         for attr in attribute_names:
@@ -141,11 +153,16 @@ def calculateAttributesAverage(data_list):
             if isinstance(value, (int, float)):  # Check if value is numeric
                 sum_values[attr] += value
                 count_values[attr] += 1
-    
+
     # Calculate the average for each attribute, considering only attributes with non-zero counts
-    avg_values = {attr: sum_values[attr] / count_values[attr] for attr in attribute_names if count_values[attr] > 0}
-    
+    avg_values = {
+        attr: sum_values[attr] / count_values[attr]
+        for attr in attribute_names
+        if count_values[attr] > 0
+    }
+
     return avg_values
+
 
 def extractAndSmoothImuData(imu_data: List[IMUData], inital_gnss_time: str = None):
     """
@@ -187,6 +204,7 @@ def extractAndSmoothImuData(imu_data: List[IMUData], inital_gnss_time: str = Non
 
     return acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, time, freq
 
+
 def extractAndSmoothMagData(data: List[MagData], inital_gnss_time: str):
     """
     Extracts magnetometer data and time differences from the given data.
@@ -217,12 +235,14 @@ def extractAndSmoothMagData(data: List[MagData], inital_gnss_time: str):
 
     return mag_x, mag_y, mag_z, time, freq
 
+
 def butter_lowpass_filter(data, fs, cutoff=1, order=2):
-        nyq = 0.5 * fs  # Define Nyquist Frequency
-        normal_cutoff = cutoff / nyq  # Normalize cutoff frequency
-        b, a = butter(order, normal_cutoff, btype='low', analog=False)
-        y = filtfilt(b, a, data)
-        return y
+    nyq = 0.5 * fs  # Define Nyquist Frequency
+    normal_cutoff = cutoff / nyq  # Normalize cutoff frequency
+    b, a = butter(order, normal_cutoff, btype="low", analog=False)
+    y = filtfilt(b, a, data)
+    return y
+
 
 def extractGNSSData(data: List[GNSSData], inital_gnss_time: str = None):
     """
@@ -243,7 +263,6 @@ def extractGNSSData(data: List[GNSSData], inital_gnss_time: str = None):
     else:
         initial_time = convertTimeToEpoch(inital_gnss_time)
 
-
     for point in data:
         cur_time = convertTimeToEpoch(point.system_time)
         if cur_time >= initial_time:
@@ -262,13 +281,26 @@ def extractGNSSData(data: List[GNSSData], inital_gnss_time: str = None):
     freq = math.floor(calculateAverageFrequency(system_time))
     print(f"GNSS data frequency: {freq} Hz")
 
-    return lat, lon, alt, speed, heading, headingAccuracy, hdop, gdop, system_time, gnss_real_time, time_resolved, freq
+    return (
+        lat,
+        lon,
+        alt,
+        speed,
+        heading,
+        headingAccuracy,
+        hdop,
+        gdop,
+        system_time,
+        gnss_real_time,
+        time_resolved,
+        freq,
+    )
 
 
 def calculate_mag_headings(mag_bundle, accel_bundle, position):
-    lat,lon,alt = position
+    lat, lon, alt = position
     wmm = WMM(latitude=lat, longitude=lon, height=alt)
-    declination = wmm.magnetic_elements['D']
+    declination = wmm.magnetic_elements["D"]
     # print(f"Declination: {declination} degrees")
 
     m_xs = mag_bundle[:, 0]
@@ -289,7 +321,11 @@ def calculate_mag_headings(mag_bundle, accel_bundle, position):
 
         # Compensate the magnetometer data
         m_x_prime = m_x * math.cos(roll) + m_z * math.sin(roll)
-        m_y_prime = m_x * math.sin(pitch) * math.sin(roll) + m_y * math.cos(pitch) - m_z * math.sin(pitch) * math.cos(roll)
+        m_y_prime = (
+            m_x * math.sin(pitch) * math.sin(roll)
+            + m_y * math.cos(pitch)
+            - m_z * math.sin(pitch) * math.cos(roll)
+        )
 
         # Calculate the magnetic heading
         magnetic_heading = math.atan2(m_x_prime, m_y_prime) * (180 / math.pi)
@@ -307,9 +343,14 @@ def calculate_mag_headings(mag_bundle, accel_bundle, position):
 
     return headings
 
-def calculate_imu_forward_velocity(acc_bundle, imu_time, gnss_speed, angle_offset_degrees):
+
+def calculate_imu_forward_velocity(
+    acc_bundle, imu_time, gnss_speed, angle_offset_degrees
+):
     # Constants
-    GNSS_ONE_SECOND = 8  # Adjust this to your actual number of samples per second in GNSS data
+    GNSS_ONE_SECOND = (
+        8  # Adjust this to your actual number of samples per second in GNSS data
+    )
     ACCEL_GRAVITY = 9.81  # Acceleration due to gravity (m/s^2)
     ONE_SECOND = 1000  # Time units in milliseconds
     RADIANS = np.pi / 180  # Conversion factor from degrees to radians
@@ -334,7 +375,9 @@ def calculate_imu_forward_velocity(acc_bundle, imu_time, gnss_speed, angle_offse
         acc_y = data[1]
 
         # Adjust acceleration components based on the offset angle
-        acc_forward = acc_x * np.cos(angle_offset_radians) + acc_y * np.sin(angle_offset_radians)
+        acc_forward = acc_x * np.cos(angle_offset_radians) + acc_y * np.sin(
+            angle_offset_radians
+        )
 
         # Integrate forward acceleration to obtain velocity
         velocity_forward += acc_forward * ACCEL_GRAVITY * deltaTImu

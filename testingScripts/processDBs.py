@@ -1,15 +1,18 @@
 import os
 from multiprocessing import Process, Queue
 import sys
-sys.path.insert(0, '/Users/rogerberman/hivemapper/sensor-fusion')  # Add the project root to the Python path
+
+sys.path.insert(
+    0, "/Users/rogerberman/hivemapper/sensor-fusion"
+)  # Add the project root to the Python path
 import numpy as np
 from fusion import (
     SqliteInterface,
     extractAndSmoothImuData,
     extractAndSmoothMagData,
     extractGNSSData,
-    calculateHeading, 
-    calibrate_mag, 
+    calculateHeading,
+    calibrate_mag,
     getCleanGNSSHeading,
     getDashcamToVehicleHeadingOffset,
     convertTimeToEpoch,
@@ -20,7 +23,8 @@ from fusion import (
     ASC,
 )
 
-SESSION_DATA_MINIMUM = 8*60*5 # 5 minutes of data at 8 Hz
+SESSION_DATA_MINIMUM = 8 * 60 * 5  # 5 minutes of data at 8 Hz
+
 
 def validate_db_file(file_path):
     if not os.path.isfile(file_path) or os.path.getsize(file_path) == 0:
@@ -29,13 +33,13 @@ def validate_db_file(file_path):
 
     try:
         # Assume hdcs and check for magnetometer table
-        camera_type = 'hdc'
+        camera_type = "hdc"
         sql_db = SqliteInterface(file_path)
         # Check for HDCS
-        if sql_db.table_exists('magnetometer'):
+        if sql_db.table_exists("magnetometer"):
             mag_data = sql_db.queryAllMagnetometer()
             if len(mag_data) > 0:
-                camera_type = 'hdcs'
+                camera_type = "hdcs"
 
         # Attempt to pull all data from the database to check for malformed data
         gnss_data = sql_db.queryAllGnss()
@@ -47,16 +51,16 @@ def validate_db_file(file_path):
         # Check for sessions
         gnss_sessions = set([d.session for d in gnss_data])
         imu_sessions = set([d.session for d in imu_data])
-        if camera_type == 'hdcs':
+        if camera_type == "hdcs":
             mag_sessions = set([d.session for d in mag_data])
         if len(gnss_sessions) == 0 or len(imu_sessions) == 0:
             print(file_path, "No sessions in one of the tables")
             return None, None
-        if camera_type == 'hdcs' and len(mag_sessions) == 0:
+        if camera_type == "hdcs" and len(mag_sessions) == 0:
             print(file_path, "No sessions in magnetometer table")
             return None, None
         # guard against empty sessions
-        if len(gnss_sessions) == 1 and '' in gnss_sessions:
+        if len(gnss_sessions) == 1 and "" in gnss_sessions:
             print(file_path, "Empty session in GNSS table")
             return None, None
 
@@ -71,50 +75,15 @@ def validate_user_dir(user_path, drives_queue, failed_files_queue):
     failed_files = []
 
     for drive in os.listdir(user_path):
-        if '-shm' in drive or '-wal' in drive or '.db' not in drive:
+        if "-shm" in drive or "-wal" in drive or ".db" not in drive:
             continue
 
         file_path = os.path.join(user_path, drive)
-        if not os.path.isfile(file_path) or os.path.getsize(file_path) == 0:
-            failed_files.append((file_path, "File does not exist or is empty"))
-            continue
-
-        try:
-            # Assume hdcs and check for magnetometer table
-            camera_type = 'hdc'
-            sql_db = SqliteInterface(file_path)
-            # Check for HDCS
-            if sql_db.table_exists('magnetometer'):
-                mag_data = sql_db.queryAllMagnetometer()
-                if len(mag_data) > 0:
-                    camera_type = 'hdcs'
-
-            # Attempt to pull all data from the database to check for malformed data
-            gnss_data = sql_db.queryAllGnss()
-            imu_data = sql_db.queryAllImu()
-            if len(gnss_data) == 0 or len(imu_data) == 0:
-                failed_files.append((file_path, "No data in one of the tables"))
-                continue
-
-            # Check for sessions
-            gnss_sessions = set([d.session for d in gnss_data])
-            imu_sessions = set([d.session for d in imu_data])
-            if camera_type == 'hdcs':
-                mag_sessions = set([d.session for d in mag_data])
-            if len(gnss_sessions) == 0 or len(imu_sessions) == 0:
-                failed_files.append((file_path, "No sessions in one of the tables"))
-                continue
-            if camera_type == 'hdcs' and len(mag_sessions) == 0:
-                failed_files.append((file_path, "No sessions in magnetometer table"))
-                continue
-            # guard against empty sessions
-            if len(gnss_sessions) == 1 and '' in gnss_sessions:
-                failed_files.append((file_path, "Empty session in GNSS table"))
-                continue
-
-            drives.append((file_path, camera_type))
-        except Exception as e:
-            failed_files.append((file_path, str(e)))
+        result, camera_type = validate_db_file(file_path)
+        if result is not None:
+            drives.append((result, camera_type))
+        else:
+            failed_files.append((file_path, "Validation failed"))
 
     # Put results into queues
     drives_queue.put(drives)
@@ -135,7 +104,10 @@ def validate_dbs(dir_path):
     for user in os.listdir(dir_path):
         user_path = os.path.join(dir_path, user)
         if os.path.isdir(user_path):
-            process = Process(target=validate_user_dir, args=(user_path, drives_queue, failed_files_queue))
+            process = Process(
+                target=validate_user_dir,
+                args=(user_path, drives_queue, failed_files_queue),
+            )
             process.start()
             processes.append(process)
 
@@ -168,7 +140,7 @@ def process_db_file_for_individual_drives(filename, camera_type):
     print(f"--- Loading data from {filename} ---")
     print(f"Camera type: {camera_type}")
     sql_db = SqliteInterface(filename)
-    if camera_type == 'hdcs':
+    if camera_type == "hdcs":
         gnss_data = sql_db.queryAllGnss()
         imu_data = sql_db.queryAllImu()
         mag_data = sql_db.queryAllMagnetometer()
@@ -177,14 +149,16 @@ def process_db_file_for_individual_drives(filename, camera_type):
         imu_sessions = set([d.session for d in imu_data])
         mag_sessions = set([d.session for d in mag_data])
         # Filter out empty sessions
-        if '' in gnss_sessions:
-            gnss_sessions.remove('')
-        if '' in imu_sessions:
-            imu_sessions.remove('')
-        if '' in mag_sessions:
-            mag_sessions.remove('')
+        if "" in gnss_sessions:
+            gnss_sessions.remove("")
+        if "" in imu_sessions:
+            imu_sessions.remove("")
+        if "" in mag_sessions:
+            mag_sessions.remove("")
         # only look at data where session exists in all three
-        common_sessions = gnss_sessions.intersection(imu_sessions).intersection(mag_sessions)
+        common_sessions = gnss_sessions.intersection(imu_sessions).intersection(
+            mag_sessions
+        )
         if len(common_sessions) == 0:
             print(f"No common sessions found for {filename}")
             return {}
@@ -195,13 +169,21 @@ def process_db_file_for_individual_drives(filename, camera_type):
             imu_data_session = [d for d in imu_data if d.session == session]
             mag_data_session = [d for d in mag_data if d.session == session]
             # ensure enough data to be useful
-            if (len(gnss_data_session) < SESSION_DATA_MINIMUM or
-                len(imu_data_session) < SESSION_DATA_MINIMUM or
-                len(mag_data_session) < SESSION_DATA_MINIMUM):
+            if (
+                len(gnss_data_session) < SESSION_DATA_MINIMUM
+                or len(imu_data_session) < SESSION_DATA_MINIMUM
+                or len(mag_data_session) < SESSION_DATA_MINIMUM
+            ):
                 print(f"Not enough data to process for session {session}")
                 continue
-            print(f"Session: {session}, GNSS data: {len(gnss_data_session)}, IMU data: {len(imu_data_session)}, Mag data: {len(mag_data_session)}")
-            useable_sessions[session] = {'gnss_data': gnss_data_session, 'imu_data': imu_data_session, 'mag_data': mag_data_session}
+            print(
+                f"Session: {session}, GNSS data: {len(gnss_data_session)}, IMU data: {len(imu_data_session)}, Mag data: {len(mag_data_session)}"
+            )
+            useable_sessions[session] = {
+                "gnss_data": gnss_data_session,
+                "imu_data": imu_data_session,
+                "mag_data": mag_data_session,
+            }
     # HDC route
     else:
         gnss_data = sql_db.queryAllGnss()
@@ -210,10 +192,10 @@ def process_db_file_for_individual_drives(filename, camera_type):
         gnss_sessions = set([d.session for d in gnss_data])
         imu_sessions = set([d.session for d in imu_data])
         # Filter out empty sessions
-        if '' in gnss_sessions:
-            gnss_sessions.remove('')
-        if '' in imu_sessions:
-            imu_sessions.remove('')
+        if "" in gnss_sessions:
+            gnss_sessions.remove("")
+        if "" in imu_sessions:
+            imu_sessions.remove("")
         # only look at data where session exists in all three
         common_sessions = gnss_sessions.intersection(imu_sessions)
         if len(common_sessions) == 0:
@@ -225,12 +207,17 @@ def process_db_file_for_individual_drives(filename, camera_type):
             gnss_data_session = [d for d in gnss_data if d.session == session]
             imu_data_session = [d for d in imu_data if d.session == session]
             # ensure enough data to be useful
-            if (len(gnss_data_session) < SESSION_DATA_MINIMUM or
-                len(imu_data_session) < SESSION_DATA_MINIMUM):
+            if (
+                len(gnss_data_session) < SESSION_DATA_MINIMUM
+                or len(imu_data_session) < SESSION_DATA_MINIMUM
+            ):
                 print(f"Not enough data to process for session {session}")
                 continue
-            print(f"Session: {session}, GNSS data: {len(gnss_data_session)}, IMU data: {len(imu_data_session)}")
-            useable_sessions[session] = {'gnss_data': gnss_data_session, 'imu_data': imu_data_session}
+            print(
+                f"Session: {session}, GNSS data: {len(gnss_data_session)}, IMU data: {len(imu_data_session)}"
+            )
+            useable_sessions[session] = {
+                "gnss_data": gnss_data_session,
+                "imu_data": imu_data_session,
+            }
     return useable_sessions
-
-
