@@ -33,7 +33,8 @@ import matplotlib.pyplot as plt
 
 if __name__ == "__main__":
     # Load data and filter data
-    dir_path = "/Users/rogerberman/Desktop/data-logger-test-data-decoded-recovered"
+    dir_path = "/Users/rogerberman/Desktop/4-9-3-Data/OG-Data-decoded-recovered"
+    # dir_path = "/Users/rogerberman/Desktop/data-logger-test-data-decoded-recovered"
     # dir_path = '/Users/rogerberman/dev_ground/50_Hz_data_trial-decoded'
     # dir_path = '/Users/rogerberman/dev_ground/CTP-decoded-05-14-2024-recovered'
     # dir_path = '/Users/rogerberman/dev_ground/CTP-decoded-05-14-2024'

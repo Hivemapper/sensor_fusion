@@ -144,6 +144,10 @@ def process_db_file_for_individual_drives(filename, camera_type):
         gnss_data = sql_db.queryAllGnss()
         imu_data = sql_db.queryAllImu()
         mag_data = sql_db.queryAllMagnetometer()
+        if sql_db.table_exists("imu_processed"):
+            imu_processed_data = sql_db.queryAllProcessedImu()
+            if len(imu_processed_data) == 0:
+                print("No processed IMU data found")
         # get unique session ids for all three
         gnss_sessions = set([d.session for d in gnss_data])
         imu_sessions = set([d.session for d in imu_data])
@@ -168,6 +172,10 @@ def process_db_file_for_individual_drives(filename, camera_type):
             gnss_data_session = [d for d in gnss_data if d.session == session]
             imu_data_session = [d for d in imu_data if d.session == session]
             mag_data_session = [d for d in mag_data if d.session == session]
+            if sql_db.table_exists("imu_processed"):
+                imu_processed_data_session = [
+                    d for d in imu_processed_data if d.session == session
+                ]
             # ensure enough data to be useful
             if (
                 len(gnss_data_session) < SESSION_DATA_MINIMUM
@@ -182,12 +190,17 @@ def process_db_file_for_individual_drives(filename, camera_type):
             useable_sessions[session] = {
                 "gnss_data": gnss_data_session,
                 "imu_data": imu_data_session,
+                "imu_processed_data": imu_processed_data_session,
                 "mag_data": mag_data_session,
             }
     # HDC route
     else:
         gnss_data = sql_db.queryAllGnss()
         imu_data = sql_db.queryAllImu()
+        if sql_db.table_exists("imu_processed"):
+            imu_processed_data = sql_db.queryAllProcessedImu()
+            if len(imu_processed_data) == 0:
+                print("No processed IMU data found")
         # get unique session ids for all three
         gnss_sessions = set([d.session for d in gnss_data])
         imu_sessions = set([d.session for d in imu_data])
@@ -206,6 +219,10 @@ def process_db_file_for_individual_drives(filename, camera_type):
         for session in common_sessions:
             gnss_data_session = [d for d in gnss_data if d.session == session]
             imu_data_session = [d for d in imu_data if d.session == session]
+            if sql_db.table_exists("imu_processed"):
+                imu_processed_data_session = [
+                    d for d in imu_processed_data if d.session == session
+                ]
             # ensure enough data to be useful
             if (
                 len(gnss_data_session) < SESSION_DATA_MINIMUM
@@ -219,5 +236,6 @@ def process_db_file_for_individual_drives(filename, camera_type):
             useable_sessions[session] = {
                 "gnss_data": gnss_data_session,
                 "imu_data": imu_data_session,
+                "imu_processed_data": imu_processed_data_session,
             }
     return useable_sessions

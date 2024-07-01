@@ -1,11 +1,12 @@
 from .sqliteinterface import (
     convertTimeToEpoch,
     convertEpochToTime,
-    SqliteInterface, 
-    ASC
+    aggregate_data,
+    SqliteInterface,
+    ASC,
 )
 from .orientation import (
-    isUpsideDown, 
+    isUpsideDown,
     getCleanGNSSHeading,
     getDashcamToVehicleHeadingOffset,
     GNSS_LOW_SPEED_THRESHOLD,
@@ -14,8 +15,8 @@ from .orientation import (
 )
 from .sensorFusion import calculateHeading
 from .utils import (
-    calculateAverageFrequency, 
-    calculateRollingAverage, 
+    calculateAverageFrequency,
+    calculateRollingAverage,
     extractAndSmoothImuData,
     extractAndSmoothMagData,
     extractGNSSData,

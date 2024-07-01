@@ -1,4 +1,6 @@
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
+import numpy as np
 
 import folium
 import math
@@ -8,7 +10,12 @@ import os
 
 
 def plot_signal_over_time(
-    seconds, signal_values, signal_label="Signal", highlight_indices=[], save_path=None
+    seconds,
+    signal_values,
+    downsample_factor=1,
+    signal_label="Signal",
+    highlight_indices=[],
+    save_path=None,
 ):
     """
     Plots signal values over time, where time is represented in seconds.
@@ -19,6 +26,8 @@ def plot_signal_over_time(
     - highlight_indices: A list of indices to highlight on the plot.
     """
     # Ensure the lists are of the same length
+    seconds = seconds[::downsample_factor]
+    signal_values = signal_values[::downsample_factor]
     if len(seconds) != len(signal_values):
         print(
             "Error: The lists of timestamps and signal values must have the same length."
@@ -114,6 +123,7 @@ def plot_signals_over_time(
     seconds,
     signal1_values,
     signal2_values,
+    downsample_factor=1,
     signal1_label="Signal 1",
     signal2_label="Signal 2",
     title=None,
@@ -127,10 +137,21 @@ def plot_signals_over_time(
     - seconds: A list of timestamps in seconds.
     - signal1_values: A list of first set of signal values corresponding to each timestamp.
     - signal2_values: A list of second set of signal values corresponding to each timestamp.
+    - downsample_factor: An integer factor by which to downsample the data.
     - signal1_label: A string label for the first signal being plotted (e.g., 'Temperature').
     - signal2_label: A string label for the second signal being plotted (e.g., 'Humidity').
+    - title: Optional. A string representing the title of the plot.
     - save_path: Optional. A string representing the file path where the plot will be saved. If None, the plot will be displayed.
     """
+    # Ensure downsample_factor is an integer
+    if not isinstance(downsample_factor, int):
+        raise ValueError("downsample_factor must be an integer")
+
+    # Downsample the data
+    seconds = np.array(seconds)[::downsample_factor]
+    signal1_values = np.array(signal1_values)[::downsample_factor]
+    signal2_values = np.array(signal2_values)[::downsample_factor]
+
     # Ensure the lists are of the same length
     if len(seconds) != len(signal1_values) or len(seconds) != len(signal2_values):
         print(
@@ -143,14 +164,14 @@ def plot_signals_over_time(
     # Plot the signals
     plt.plot(seconds, signal1_values, linestyle="-", color="b", label=signal1_label)
     plt.plot(seconds, signal2_values, linestyle="-", color="r", label=signal2_label)
+
     # Formatting the plot
-    plt.title(f"{signal1_label} and {signal2_label} Over Time")
+    if title:
+        plt.title(title)
     plt.xlabel("Time (seconds)")
     plt.ylabel("Value")
     plt.legend()
     plt.grid(True)
-    # Set overall title
-    plt.suptitle(title)
 
     if save_path:
         plt.savefig(save_path)  # Save the figure to the file path provided
@@ -158,8 +179,20 @@ def plot_signals_over_time(
 
 
 def plot_sensor_data(
-    time_series, x_series, y_series, z_series, sensor_name, title="Sensor Data"
+    time_series,
+    x_series,
+    y_series,
+    z_series,
+    sensor_name,
+    title="Sensor Data",
+    downsample_factor=1,
 ):
+    # Downsample the data
+    time_series = time_series[::downsample_factor]
+    x_series = x_series[::downsample_factor]
+    y_series = y_series[::downsample_factor]
+    z_series = z_series[::downsample_factor]
+
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 8))
 
     # Plot x-axis data
@@ -167,27 +200,41 @@ def plot_sensor_data(
     ax1.set_xlabel("Time")
     ax1.set_ylabel(f"{sensor_name} X")
     ax1.set_title(f"{sensor_name} X-Axis")
-    ax1.grid(True)
+    ax1.minorticks_on()
+    # ax1.grid(which="both", linestyle="-", linewidth="0.5")
+    ax1.grid(which="minor", linestyle=":", linewidth="0.5", color="gray")
+    ax1.xaxis.set_minor_locator(MaxNLocator(nbins=10))
+    ax1.yaxis.set_minor_locator(MaxNLocator(nbins=10))
 
     # Plot y-axis data
     ax2.plot(time_series, y_series, color="g")
     ax2.set_xlabel("Time")
     ax2.set_ylabel(f"{sensor_name} Y")
     ax2.set_title(f"{sensor_name} Y-Axis")
-    ax2.grid(True)
+    ax2.minorticks_on()
+    # ax2.grid(which="both", linestyle="-", linewidth="0.5")
+    ax2.grid(which="minor", linestyle=":", linewidth="0.5", color="gray")
+    ax2.xaxis.set_minor_locator(MaxNLocator(nbins=10))
+    ax2.yaxis.set_minor_locator(MaxNLocator(nbins=10))
 
     # Plot z-axis data
     ax3.plot(time_series, z_series, color="b")
     ax3.set_xlabel("Time")
     ax3.set_ylabel(f"{sensor_name} Z")
     ax3.set_title(f"{sensor_name} Z-Axis")
-    ax3.grid(True)
+    ax3.minorticks_on()
+    # ax3.grid(which="both", linestyle="-", linewidth="0.5")
+    ax3.grid(which="minor", linestyle=":", linewidth="0.5", color="gray")
+    ax3.xaxis.set_minor_locator(MaxNLocator(nbins=10))
+    ax3.yaxis.set_minor_locator(MaxNLocator(nbins=10))
 
     # Set overall title
     plt.suptitle(title)
 
     # Adjust layout to prevent overlap
-    plt.tight_layout()
+    plt.tight_layout(
+        rect=[0, 0.03, 1, 0.95]
+    )  # Adjust the rect parameter to make room for suptitle
 
 
 def plot_sensor_data_classified(
