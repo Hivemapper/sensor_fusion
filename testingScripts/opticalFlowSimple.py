@@ -66,6 +66,19 @@ def find_intersections_within_bounds(lines, width, height):
     return np.array(intersections)
 
 
+def count_intersections_in_grid(intersections, grid_size, width, height):
+    grid_height = height // grid_size
+    grid_width = width // grid_size
+    grid = np.zeros((grid_height, grid_width), dtype=int)
+    grid_indices = (intersections // grid_size).astype(int)
+
+    for x_idx, y_idx in grid_indices:
+        if 0 <= x_idx < grid_width and 0 <= y_idx < grid_height:
+            grid[y_idx, x_idx] += 1
+
+    return grid
+
+
 def draw_dotted_line(image, start_point, end_point, color, thickness, gap):
     x1, y1 = start_point
     x2, y2 = end_point
@@ -220,6 +233,15 @@ def calculate_farneback_optical_flow(directory, results_directory, parent_dir_na
             (255, 0, 0),
             1,
         )
+    ### Math and drawing done for intersection point densities
+    grid_size = 32
+    print(f"Grid Calculation with grid size: {grid_size}")
+    grid = count_intersections_in_grid(intersections, grid_size, w, h)
+    # Create a heatmap from the grid
+    heatmap = np.uint8(255 * grid / np.max(grid))
+    heatmap = cv2.resize(heatmap, (w, h), interpolation=cv2.INTER_NEAREST)
+    # Apply a color map to the heatmap
+    colored_heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
 
     # Read a sample image for overlay
     sample_image = cv2.imread(os.path.join(directory, image_files[-1]))
@@ -239,8 +261,12 @@ def calculate_farneback_optical_flow(directory, results_directory, parent_dir_na
     # Overlay the optical flow on the sample image
     overlay = cv2.addWeighted(sample_image_resized, 0.5, flow_img_resized, 0.5, 0)
     overlay_line = cv2.addWeighted(sample_image_resized, 0.7, line_img_resized, 0.3, 0)
-    overlay_intersection = cv2.addWeighted(
+    overlay_intersection_img = cv2.addWeighted(
         sample_image_resized, 0.5, intersection_img_resized, 0.5, 0
+    )
+    # Overlay the heatmap on the original image
+    overlay_density_img = cv2.addWeighted(
+        sample_image_resized, 0.5, colored_heatmap, 0.5, 0
     )
 
     # Save the images to the results directory with the parent directory name in the filenames
@@ -283,7 +309,13 @@ def calculate_farneback_optical_flow(directory, results_directory, parent_dir_na
         os.path.join(
             results_directory, f"{parent_dir_name}_Farneback_overlay_intersection.jpg"
         ),
-        overlay_intersection,
+        overlay_intersection_img,
+    )
+    cv2.imwrite(
+        os.path.join(
+            results_directory, f"{parent_dir_name}_Farneback_intersection_density.jpg"
+        ),
+        overlay_density_img,
     )
 
 
