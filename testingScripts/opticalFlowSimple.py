@@ -3,6 +3,14 @@ import numpy as np
 import os
 import math
 
+HORIZONTAL_FOV = 142  # degrees
+HORIZONTAL_FOV_DEGREE_PER_PIXEL = (
+    HORIZONTAL_FOV / 1024
+)  # original 1520 pixels but we trim to 1024 pixels
+VERTICAL_FOV = (
+    103 / 1520 * 1024
+)  # original 1520 pixels but we trim to 1024 pixels, in degrees
+
 
 def calculate_boundary_points(start_point, slope, image_width, image_height):
     x0, y0 = start_point
@@ -35,16 +43,70 @@ def calculate_boundary_points(start_point, slope, image_width, image_height):
     return boundary_points
 
 
-def draw_vertical_center_line(image, thickness=2):
+def line_from_slope_and_point(slope, point):
+    x, y = point
+    intercept = y - slope * x
+    return slope, intercept
+
+
+def find_intersections_within_bounds(lines, width, height):
+    intersections = []
+    num_lines = len(lines)
+    for i in range(num_lines):
+        m1, c1 = lines[i]
+        for j in range(i + 1, num_lines):
+            m2, c2 = lines[j]
+            if m1 != m2:
+                x = (c2 - c1) / (m1 - m2)
+                y = m1 * x + c1
+                x_rounded = round(x)
+                y_rounded = round(y)
+                if 0 <= x_rounded < width and 0 <= y_rounded < height:
+                    intersections.append((x_rounded, y_rounded))
+    return np.array(intersections)
+
+
+def draw_dotted_line(image, start_point, end_point, color, thickness, gap):
+    x1, y1 = start_point
+    x2, y2 = end_point
+    is_vertical = x1 == x2
+    if is_vertical:
+        for y in range(y1, y2, gap * 2):
+            cv2.line(image, (x1, y), (x2, y + gap), color, thickness)
+
+
+def draw_vertical_center_line(image, thickness=1, gap=10):
     h, w = image.shape[:2]
     center_x = w // 2
-    cv2.line(
-        image, (center_x, 0), (center_x, h), (255, 255, 255), thickness
-    )  # White line with specified thickness
+    # get 20 degree lines from center
+    HORIZONTAL_FOV_DEGREE_PER_PIXEL = 0.1  # example value
+    pixel_count_20 = math.ceil(20 / HORIZONTAL_FOV_DEGREE_PER_PIXEL)
+
+    # Draw dotted off-center lines
+    draw_dotted_line(
+        image,
+        (center_x - pixel_count_20, 0),
+        (center_x - pixel_count_20, h),
+        (255, 255, 255),
+        thickness,
+        gap,
+    )
+    draw_dotted_line(
+        image,
+        (center_x + pixel_count_20, 0),
+        (center_x + pixel_count_20, h),
+        (255, 255, 255),
+        thickness,
+        gap,
+    )
+
+    # Draw solid center line
+    cv2.line(image, (center_x, 0), (center_x, h), (255, 255, 255), thickness)
+
     return image
 
 
-def draw_horizontal_center_line(image, thickness=2):
+def draw_horizontal_center_line(image, thickness=1):
     h, w = image.shape[:2]
     center_y = h // 2
     cv2.line(
@@ -93,7 +155,7 @@ def calculate_farneback_optical_flow(directory, results_directory, parent_dir_na
     magnitude, angle = cv2.cartToPolar(average_flow[..., 0], average_flow[..., 1])
 
     # Ignore magnitudes within X pixels of any border
-    border = 50
+    border = 10
     for y in range(magnitude.shape[0]):  # Iterate over rows (top to bottom)
         for x in range(magnitude.shape[1]):  # Iterate over columns (left to right)
             if (
@@ -115,10 +177,14 @@ def calculate_farneback_optical_flow(directory, results_directory, parent_dir_na
     fx = magnitude * np.cos(angle)
     fy = magnitude * np.sin(angle)
 
+    # Store lines for intersection calculations
+    lines = []
     # Create an image to display the flow
     h, w = average_flow.shape[:2]
     flow_img = np.zeros((h, w, 3), dtype=np.uint8)
     line_img = np.zeros((h, w, 3), dtype=np.uint8)
+    intersection_img = np.zeros((h, w, 3), dtype=np.uint8)
+    line_count = 0
     step = 16
     for y in range(0, h, step):
         for x in range(0, w, step):
@@ -132,7 +198,7 @@ def calculate_farneback_optical_flow(directory, results_directory, parent_dir_na
                     slope = (end_point[1] - start_point[1]) / (
                         end_point[0] - start_point[0]
                     )
-                    # print(f"Slope: {slope}")
+                    lines.append(line_from_slope_and_point(slope, start_point))
                     if slope != 0:
                         new_end = calculate_boundary_points(start_point, slope, w, h)
                         if len(new_end) == 2:
@@ -141,38 +207,41 @@ def calculate_farneback_optical_flow(directory, results_directory, parent_dir_na
                             # cv2.circle(line_img, new_end[1], 3, (0, 0, 255), -1)
                             cv2.line(line_img, start_point, new_end[0], (0, 255, 0), 1)
                             cv2.line(line_img, start_point, new_end[1], (0, 255, 0), 1)
+                            line_count += 1
+
+    print(f"Line count: {line_count}")
+    lines = np.array(lines)
+    intersections = find_intersections_within_bounds(lines, w, h)
+    for point in intersections:
+        cv2.line(
+            intersection_img,
+            (int(point[0]), int(point[1])),
+            (int(point[0]), int(point[1])),
+            (255, 0, 0),
+            1,
+        )
 
     # Read a sample image for overlay
-    sample_image = cv2.imread(os.path.join(directory, image_files[0]))
+    sample_image = cv2.imread(os.path.join(directory, image_files[-1]))
 
-    # Resize images for display
-    display_scale = 1.0  # Scale factor for displaying images
-    flow_img_resized = cv2.resize(
-        flow_img, (int(w * display_scale), int(h * display_scale))
-    )
-    line_img_resized = cv2.resize(
-        line_img, (int(w * display_scale), int(h * display_scale))
-    )
-    sample_image_resized = cv2.resize(
-        sample_image,
-        (
-            int(sample_image.shape[1] * display_scale),
-            int(sample_image.shape[0] * display_scale),
-        ),
-    )
     # Draw vertical center line on images
-    flow_img_resized = draw_vertical_center_line(flow_img_resized)
-    line_img_resized = draw_vertical_center_line(line_img_resized)
-    sample_image_resized = draw_vertical_center_line(sample_image_resized)
+    flow_img_resized = draw_vertical_center_line(flow_img)
+    line_img_resized = draw_vertical_center_line(line_img)
+    intersection_img_resized = draw_vertical_center_line(intersection_img)
+    sample_image_resized = draw_vertical_center_line(sample_image)
 
     # Draw horizontal center line on images
     flow_img_resized = draw_horizontal_center_line(flow_img_resized)
     line_img_resized = draw_horizontal_center_line(line_img_resized)
+    intersection_img_resized = draw_horizontal_center_line(intersection_img_resized)
     sample_image_resized = draw_horizontal_center_line(sample_image_resized)
 
     # Overlay the optical flow on the sample image
     overlay = cv2.addWeighted(sample_image_resized, 0.5, flow_img_resized, 0.5, 0)
     overlay_line = cv2.addWeighted(sample_image_resized, 0.7, line_img_resized, 0.3, 0)
+    overlay_intersection = cv2.addWeighted(
+        sample_image_resized, 0.5, intersection_img_resized, 0.5, 0
+    )
 
     # Save the images to the results directory with the parent directory name in the filenames
     os.makedirs(results_directory, exist_ok=True)
@@ -204,9 +273,21 @@ def calculate_farneback_optical_flow(directory, results_directory, parent_dir_na
         ),
         overlay_line,
     )
+    cv2.imwrite(
+        os.path.join(
+            results_directory, f"{parent_dir_name}_Farneback_intersection.jpg"
+        ),
+        intersection_img,
+    )
+    cv2.imwrite(
+        os.path.join(
+            results_directory, f"{parent_dir_name}_Farneback_overlay_intersection.jpg"
+        ),
+        overlay_intersection,
+    )
 
 
-base_directory = "//Users/rogerberman/Desktop/frameKMImages"
+base_directory = "//Users/rogerberman/Desktop/frameKMImages/frontMount"
 results_base_directory = os.path.join(base_directory, "results")
 dirs = [
     d
