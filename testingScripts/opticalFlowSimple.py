@@ -1,162 +1,18 @@
 import cv2
 import numpy as np
 import os
-import math
 
-HORIZONTAL_FOV = 142  # degrees
-HORIZONTAL_FOV_DEGREE_PER_PIXEL = (
-    HORIZONTAL_FOV / 1024
-)  # original 1520 pixels but we trim to 1024 pixels
-VERTICAL_FOV = (
-    103 / 1520 * 1024
-)  # original 1520 pixels but we trim to 1024 pixels, in degrees
-
-
-def calculate_boundary_points(start_point, slope, image_width, image_height):
-    x0, y0 = start_point
-    boundary_points = []
-
-    # Calculate intersection with the left boundary (x = 0)
-    if slope != 0:
-        y_left = y0 - x0 * slope
-        if 0 <= y_left < image_height:
-            boundary_points.append((0, int(y_left)))
-
-    # Calculate intersection with the right boundary (x = image_width - 1)
-    y_right = y0 + (image_width - 1 - x0) * slope
-    if 0 <= y_right < image_height:
-        boundary_points.append((image_width - 1, int(y_right)))
-
-    # Calculate intersection with the top boundary (y = 0)
-    if slope != 0:
-        x_top = x0 - y0 / slope
-        if 0 <= x_top < image_width:
-            boundary_points.append((int(x_top), 0))
-
-    # Calculate intersection with the bottom boundary (y = image_height - 1)
-    x_bottom = x0 + (image_height - 1 - y0) / slope
-    if 0 <= x_bottom < image_width:
-        boundary_points.append((int(x_bottom), image_height - 1))
-
-    # Return all valid boundary points
-    # print(f"Boundary points: {boundary_points}")
-    return boundary_points
-
-
-def line_from_slope_and_point(slope, point):
-    x, y = point
-    intercept = y - slope * x
-    return slope, intercept
-
-
-def find_intersections_within_bounds(lines, width, height):
-    intersections = []
-    num_lines = len(lines)
-    for i in range(num_lines):
-        m1, c1 = lines[i]
-        for j in range(i + 1, num_lines):
-            m2, c2 = lines[j]
-            if m1 != m2:
-                x = (c2 - c1) / (m1 - m2)
-                y = m1 * x + c1
-                x_rounded = round(x)
-                y_rounded = round(y)
-                if 0 <= x_rounded < width and 0 <= y_rounded < height:
-                    intersections.append((x_rounded, y_rounded))
-    return np.array(intersections)
-
-
-def count_intersections_in_grid(intersections, grid_size, width, height):
-    grid_height = height // grid_size
-    grid_width = width // grid_size
-    grid = np.zeros((grid_height, grid_width), dtype=int)
-    grid_indices = (intersections // grid_size).astype(int)
-
-    for x_idx, y_idx in grid_indices:
-        if 0 <= x_idx < grid_width and 0 <= y_idx < grid_height:
-            grid[y_idx, x_idx] += 1
-
-    return grid
-
-
-def get_top_x_sections(grid, top_x):
-    # Flatten the 2D grid into a 1D array
-    flat_grid = grid.flatten()
-
-    # Get indices of the top X values in the flattened array, sorted in descending order
-    top_indices = np.argsort(flat_grid)[-top_x:][::-1]
-
-    # Get the top values from the flattened grid
-    top_values = flat_grid[top_indices]
-
-    # Convert the 1D indices back to 2D coordinates
-    top_coords = np.unravel_index(top_indices, grid.shape)
-
-    # Combine the coordinates and values into a list of tuples (row, col, value)
-    top_sections = list(zip(top_coords[0], top_coords[1], top_values))
-
-    return top_sections
-
-
-# Calculate the horizontal range of the top sections
-def get_horizontal_range_of_top_sections(top_sections, grid_size):
-    # Extract x-coordinates (column indices) of the top sections
-    x_coords = [x_idx * grid_size for _, x_idx, _ in top_sections]
-
-    # Find the minimum and maximum x-coordinates
-    min_x = min(x_coords)
-    max_x = max(x_coords)
-
-    return min_x, max_x
-
-
-def draw_dotted_line(image, start_point, end_point, color, thickness, gap):
-    x1, y1 = start_point
-    x2, y2 = end_point
-    is_vertical = x1 == x2
-    if is_vertical:
-        for y in range(y1, y2, gap * 2):
-            cv2.line(image, (x1, y), (x2, y + gap), color, thickness)
-
-
-def draw_vertical_center_line(image, thickness=1, gap=10):
-    h, w = image.shape[:2]
-    center_x = w // 2
-    # get 20 degree lines from center
-    HORIZONTAL_FOV_DEGREE_PER_PIXEL = 0.1  # example value
-    pixel_count_20 = math.ceil(20 / HORIZONTAL_FOV_DEGREE_PER_PIXEL)
-
-    # Draw dotted off-center lines
-    draw_dotted_line(
-        image,
-        (center_x - pixel_count_20, 0),
-        (center_x - pixel_count_20, h),
-        (255, 255, 255),
-        thickness,
-        gap,
-    )
-    draw_dotted_line(
-        image,
-        (center_x + pixel_count_20, 0),
-        (center_x + pixel_count_20, h),
-        (255, 255, 255),
-        thickness,
-        gap,
-    )
-
-    # Draw solid center line
-    cv2.line(image, (center_x, 0), (center_x, h), (255, 255, 255), thickness)
-
-    return image
-
-
-def draw_horizontal_center_line(image, thickness=1):
-    h, w = image.shape[:2]
-    center_y = h // 2
-    cv2.line(
-        image, (0, center_y), (w, center_y), (255, 255, 255), thickness
-    )  # White line with specified thickness
-    return image
+from opticalFlowHelpers import (
+    calculate_boundary_points,
+    line_from_slope_and_point,
+    find_intersections_within_bounds,
+    count_intersections_in_grid,
+    get_top_x_sections,
+    get_horizontal_range_of_top_sections,
+    draw_vertical_center_line,
+    draw_horizontal_center_line,
+    HORIZONTAL_FOV_DEGREE_PER_PIXEL,
+)
 
 
 def calculate_farneback_optical_flow(directory, results_directory, parent_dir_name):
