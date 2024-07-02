@@ -79,6 +79,37 @@ def count_intersections_in_grid(intersections, grid_size, width, height):
     return grid
 
 
+def get_top_x_sections(grid, top_x):
+    # Flatten the 2D grid into a 1D array
+    flat_grid = grid.flatten()
+
+    # Get indices of the top X values in the flattened array, sorted in descending order
+    top_indices = np.argsort(flat_grid)[-top_x:][::-1]
+
+    # Get the top values from the flattened grid
+    top_values = flat_grid[top_indices]
+
+    # Convert the 1D indices back to 2D coordinates
+    top_coords = np.unravel_index(top_indices, grid.shape)
+
+    # Combine the coordinates and values into a list of tuples (row, col, value)
+    top_sections = list(zip(top_coords[0], top_coords[1], top_values))
+
+    return top_sections
+
+
+# Calculate the horizontal range of the top sections
+def get_horizontal_range_of_top_sections(top_sections, grid_size):
+    # Extract x-coordinates (column indices) of the top sections
+    x_coords = [x_idx * grid_size for _, x_idx, _ in top_sections]
+
+    # Find the minimum and maximum x-coordinates
+    min_x = min(x_coords)
+    max_x = max(x_coords)
+
+    return min_x, max_x
+
+
 def draw_dotted_line(image, start_point, end_point, color, thickness, gap):
     x1, y1 = start_point
     x2, y2 = end_point
@@ -234,7 +265,7 @@ def calculate_farneback_optical_flow(directory, results_directory, parent_dir_na
             1,
         )
     ### Math and drawing done for intersection point densities
-    grid_size = 32
+    grid_size = 16
     print(f"Grid Calculation with grid size: {grid_size}")
     grid = count_intersections_in_grid(intersections, grid_size, w, h)
     # Create a heatmap from the grid
@@ -243,9 +274,32 @@ def calculate_farneback_optical_flow(directory, results_directory, parent_dir_na
     # Apply a color map to the heatmap
     colored_heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
 
+    ##### Math and overlay for top grid densities
+    top_x = 5
+    top_sections = get_top_x_sections(grid, top_x)
+    print(f"Top {top_x} sections with the highest number of intersections:")
+    for y_idx, x_idx, value in top_sections:
+        print(f"Section at ({x_idx}, {y_idx}) with {value} intersections")
+    x_min, x_max = get_horizontal_range_of_top_sections(top_sections, grid_size)
+    mid_x = (x_min + x_max) // 2
+
     # Read a sample image for overlay
     sample_image = cv2.imread(os.path.join(directory, image_files[-1]))
-
+    # Create an overlay image for the top sections
+    overlay_top_sections = np.zeros_like(sample_image)
+    # Highlight the top sections on the overlay image
+    for y_idx, x_idx, _ in top_sections:
+        cv2.rectangle(
+            overlay_top_sections,
+            (x_idx * grid_size, y_idx * grid_size),
+            ((x_idx + 1) * grid_size, (y_idx + 1) * grid_size),
+            (0, 255, 0),
+            2,
+        )
+    # draw line at mid_x
+    cv2.line(overlay_top_sections, (mid_x, 0), (mid_x, h), (0, 0, 255), 2)
+    device_offset = ((w // 2) - mid_x) * HORIZONTAL_FOV_DEGREE_PER_PIXEL
+    print(f"Device offset: {device_offset} degrees")
     # Draw vertical center line on images
     flow_img_resized = draw_vertical_center_line(flow_img)
     line_img_resized = draw_vertical_center_line(line_img)
@@ -267,6 +321,9 @@ def calculate_farneback_optical_flow(directory, results_directory, parent_dir_na
     # Overlay the heatmap on the original image
     overlay_density_img = cv2.addWeighted(
         sample_image_resized, 0.5, colored_heatmap, 0.5, 0
+    )
+    overlay_top_sections_img = cv2.addWeighted(
+        sample_image_resized, 0.7, overlay_top_sections, 0.3, 0
     )
 
     # Save the images to the results directory with the parent directory name in the filenames
@@ -316,6 +373,12 @@ def calculate_farneback_optical_flow(directory, results_directory, parent_dir_na
             results_directory, f"{parent_dir_name}_Farneback_intersection_density.jpg"
         ),
         overlay_density_img,
+    )
+    cv2.imwrite(
+        os.path.join(
+            results_directory, f"{parent_dir_name}_Farneback_top_sections.jpg"
+        ),
+        overlay_top_sections_img,
     )
 
 
