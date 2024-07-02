@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 import math
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 ########### Constants ############
 HORIZONTAL_FOV = 142  # degrees
@@ -20,9 +21,16 @@ MAGNITUDE_BORDER_TRIMMING = 10
 ########### Math Functions ############
 
 
+def calculate_flow(pair):
+    prev_gray, curr_gray = pair
+    flow = cv2.calcOpticalFlowFarneback(
+        prev_gray, curr_gray, None, 0.5, 3, 15, 3, 5, 1.2, 0
+    )
+    return flow
+
+
 def calculate_franeback_optical_flow(directory):
     print(f"FrameKM being evaluated: {directory}")
-    # Get a sorted list of image filenames
     image_files = sorted(
         [f for f in os.listdir(directory) if f.endswith(".jpg")],
         key=lambda x: int(x.split(".")[0]),
@@ -31,41 +39,86 @@ def calculate_franeback_optical_flow(directory):
     print(f" Image files length: {img_count}")
     last_image_path = os.path.join(directory, image_files[-1])
 
-    # Initialize the optical flow accumulator
     accumulated_flow = None
     count = 0
 
-    # Calculate step size depending on the number of images
     if img_count < 8:
         step = 1
-    elif img_count < 16:
-        step = 2
     else:
-        step = 3
+        step = 2
 
-    # Iterate through the image files to calculate optical flow
-    for i in range(1, len(image_files), step):
-        prev_img = cv2.imread(os.path.join(directory, image_files[i - 1]))
-        curr_img = cv2.imread(os.path.join(directory, image_files[i]))
-
-        prev_gray = cv2.cvtColor(prev_img, cv2.COLOR_BGR2GRAY)
-        curr_gray = cv2.cvtColor(curr_img, cv2.COLOR_BGR2GRAY)
-
-        # Calculate dense optical flow using Farneback method
-        flow = cv2.calcOpticalFlowFarneback(
-            prev_gray, curr_gray, None, 0.5, 3, 15, 3, 5, 1.2, 0
+    pairs = [
+        (
+            cv2.cvtColor(
+                cv2.imread(os.path.join(directory, image_files[i - step])),
+                cv2.COLOR_BGR2GRAY,
+            ),
+            cv2.cvtColor(
+                cv2.imread(os.path.join(directory, image_files[i])), cv2.COLOR_BGR2GRAY
+            ),
         )
+        for i in range(step, len(image_files), step)
+    ]
 
-        # Accumulate the flow vectors
-        if accumulated_flow is None:
-            accumulated_flow = np.zeros_like(flow)
+    with ThreadPoolExecutor() as executor:
+        futures = [executor.submit(calculate_flow, pair) for pair in pairs]
+        for future in as_completed(futures):
+            flow = future.result()
+            if accumulated_flow is None:
+                accumulated_flow = np.zeros_like(flow)
+            accumulated_flow += flow
+            count += 1
 
-        accumulated_flow += flow
-        count += 1
-
-    # Calculate the average optical flow
     average_flow = accumulated_flow / count
     return average_flow, last_image_path
+
+
+# def calculate_franeback_optical_flow(directory):
+#     print(f"FrameKM being evaluated: {directory}")
+#     # Get a sorted list of image filenames
+#     image_files = sorted(
+#         [f for f in os.listdir(directory) if f.endswith(".jpg")],
+#         key=lambda x: int(x.split(".")[0]),
+#     )
+#     img_count = len(image_files)
+#     print(f" Image files length: {img_count}")
+#     last_image_path = os.path.join(directory, image_files[-1])
+
+#     # Initialize the optical flow accumulator
+#     accumulated_flow = None
+#     count = 0
+
+#     # Calculate step size depending on the number of images
+#     if img_count < 8:
+#         step = 1
+#     elif img_count < 16:
+#         step = 2
+#     else:
+#         step = 3
+
+#     # Iterate through the image files to calculate optical flow
+#     for i in range(1, len(image_files), step):
+#         prev_img = cv2.imread(os.path.join(directory, image_files[i - 1]))
+#         curr_img = cv2.imread(os.path.join(directory, image_files[i]))
+
+#         prev_gray = cv2.cvtColor(prev_img, cv2.COLOR_BGR2GRAY)
+#         curr_gray = cv2.cvtColor(curr_img, cv2.COLOR_BGR2GRAY)
+
+#         # Calculate dense optical flow using Farneback method
+#         flow = cv2.calcOpticalFlowFarneback(
+#             prev_gray, curr_gray, None, 0.5, 3, 15, 3, 5, 1.2, 0
+#         )
+
+#         # Accumulate the flow vectors
+#         if accumulated_flow is None:
+#             accumulated_flow = np.zeros_like(flow)
+
+#         accumulated_flow += flow
+#         count += 1
+
+#     # Calculate the average optical flow
+#     average_flow = accumulated_flow / count
+#     return average_flow, last_image_path
 
 
 def process_mag_and_angle_for_lines(magnitude, angle, h, w, step=16):
