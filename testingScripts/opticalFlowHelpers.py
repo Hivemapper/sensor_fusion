@@ -3,6 +3,7 @@ import cv2
 import math
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from scipy.spatial.distance import cdist
 
 ########### Constants ############
 HORIZONTAL_FOV = 142  # degrees
@@ -12,6 +13,8 @@ HORIZONTAL_FOV_DEGREE_PER_PIXEL = (
 VERTICAL_FOV = (
     103 / 1520 * 1024
 )  # original 1520 pixels but we trim to 1024 pixels, in degrees
+HORIZONTAL_20_DEGREES = math.ceil(20 / HORIZONTAL_FOV_DEGREE_PER_PIXEL)
+HORIZONTAL_30_DEGREES = math.ceil(30 / HORIZONTAL_FOV_DEGREE_PER_PIXEL)
 
 ########### Tuneable Values ############
 MAGNITUDE_THRESHOLD = 2.5
@@ -42,22 +45,23 @@ def calculate_franeback_optical_flow(directory):
     accumulated_flow = None
     count = 0
 
-    if img_count < 8:
-        step = 1
-    else:
-        step = 2
+    step = 1
+    # if img_count < 20:
+    #     step = 1
+    # else:
+    #     step = 2
 
     pairs = [
         (
             cv2.cvtColor(
-                cv2.imread(os.path.join(directory, image_files[i - step])),
-                cv2.COLOR_BGR2GRAY,
-            ),
-            cv2.cvtColor(
                 cv2.imread(os.path.join(directory, image_files[i])), cv2.COLOR_BGR2GRAY
             ),
+            cv2.cvtColor(
+                cv2.imread(os.path.join(directory, image_files[i + step])),
+                cv2.COLOR_BGR2GRAY,
+            ),
         )
-        for i in range(step, len(image_files), step)
+        for i in range(0, img_count - step, step)
     ]
 
     with ThreadPoolExecutor() as executor:
@@ -136,10 +140,10 @@ def process_mag_and_angle_for_lines(magnitude, angle, h, w, step=16):
                 magnitude[y, x] = 0  # Set magnitudes within the border to 0
 
     # Ignore angles where the magnitude is 0
-    # for y in range(angle.shape[0]):  # Iterate over rows (top to bottom)
-    #     for x in range(angle.shape[1]):  # Iterate over columns (left to right)
-    #         if magnitude[y, x] == 0:
-    #             angle[y, x] = 0
+    for y in range(angle.shape[0]):  # Iterate over rows (top to bottom)
+        for x in range(angle.shape[1]):  # Iterate over columns (left to right)
+            if magnitude[y, x] == 0:
+                angle[y, x] = 0
 
     # Recreate the flow vectors from magnitude and angle
     fx = magnitude * np.cos(angle)
@@ -153,6 +157,7 @@ def process_mag_and_angle_for_lines(magnitude, angle, h, w, step=16):
                 slope = (end_point[1] - start_point[1]) / (
                     end_point[0] - start_point[0]
                 )
+                # Add filter conditions to ignore noisy lines
                 lines.append(line_from_slope_and_point(slope, start_point))
     print(f" Number of lines: {len(lines)}")
     return np.array(lines)
@@ -212,36 +217,135 @@ def find_intersections_within_bounds(lines, width, height):
     return np.array(intersections)
 
 
-def count_intersections_in_grid(intersections, width, height, grid_size=16):
+# def count_intersections_in_grid(intersections, width, height, grid_size=16):
+#     grid_height = height // grid_size
+#     grid_width = width // grid_size
+#     grid = np.zeros((grid_height, grid_width), dtype=int)
+#     grid_indices = (intersections // grid_size).astype(int)
+
+#     for x_idx, y_idx in grid_indices:
+#         if 0 <= x_idx < grid_width and 0 <= y_idx < grid_height:
+#             grid[y_idx, x_idx] += 1
+
+#     return grid
+
+
+def count_intersections_in_grid(
+    intersections, width, height, grid_size=16, left_bound=None, right_bound=None
+):
+    mid_point = width // 2
+    left_bound = left_bound if left_bound else mid_point - HORIZONTAL_30_DEGREES
+    right_bound = right_bound if right_bound else mid_point + HORIZONTAL_30_DEGREES
+
     grid_height = height // grid_size
     grid_width = width // grid_size
     grid = np.zeros((grid_height, grid_width), dtype=int)
     grid_indices = (intersections // grid_size).astype(int)
 
+    left_bound_idx = left_bound // grid_size
+    right_bound_idx = right_bound // grid_size
+
     for x_idx, y_idx in grid_indices:
-        if 0 <= x_idx < grid_width and 0 <= y_idx < grid_height:
+        if left_bound_idx <= x_idx < right_bound_idx and 0 <= y_idx < grid_height:
             grid[y_idx, x_idx] += 1
 
     return grid
 
 
-def get_top_x_sections(grid, top_x):
+# TODO: Handle cases where outliers exist, need to remove them
+# def get_top_x_sections(grid, top_x):
+#     # Flatten the 2D grid into a 1D array
+#     flat_grid = grid.flatten()
+
+#     # Get indices of the top X values in the flattened array, sorted in descending order
+#     top_indices = np.argsort(flat_grid)[-top_x:][::-1]
+
+#     # Get the top values from the flattened grid
+#     top_values = flat_grid[top_indices]
+
+#     # Convert the 1D indices back to 2D coordinates
+#     top_coords = np.unravel_index(top_indices, grid.shape)
+
+#     # Combine the coordinates and values into a list of tuples (row, col, value)
+#     top_sections = list(zip(top_coords[0], top_coords[1], top_values))
+
+#     return top_sections
+
+
+# def get_top_x_sections(grid, top_x, max_distance=8):
+#     # Flatten the 2D grid into a 1D array
+#     flat_grid = grid.flatten()
+
+#     # Get indices of the top X values in the flattened array, sorted in descending order
+#     top_indices = np.argsort(flat_grid)[-top_x:][::-1]
+
+#     # Get the top values from the flattened grid
+#     top_values = flat_grid[top_indices]
+
+#     # Convert the 1D indices back to 2D coordinates
+#     top_coords = np.unravel_index(top_indices, grid.shape)
+#     top_coords = np.column_stack(top_coords)  # Convert to (row, col) format
+
+#     # Combine the coordinates and values into a list of tuples (row, col, value)
+#     top_sections = list(zip(top_coords[:, 0], top_coords[:, 1], top_values))
+
+#     # Filter out sections that are not close to each other
+#     filtered_sections = [top_sections[0]]  # Start with the first section
+#     for section in top_sections[1:]:
+#         distances = cdist(
+#             [section[:2]], [s[:2] for s in filtered_sections], metric="euclidean"
+#         )
+#         if np.any(distances <= max_distance):
+#             filtered_sections.append(section)
+
+#     return filtered_sections
+
+
+def get_top_x_sections(grid, top_x, max_distance=5):
     # Flatten the 2D grid into a 1D array
     flat_grid = grid.flatten()
 
-    # Get indices of the top X values in the flattened array, sorted in descending order
-    top_indices = np.argsort(flat_grid)[-top_x:][::-1]
+    # Get indices of the top 2*top_x values in the flattened array, sorted in descending order
+    initial_pool_size = top_x * 2
+    top_indices = np.argpartition(flat_grid, -initial_pool_size)[-initial_pool_size:]
+    top_indices = top_indices[np.argsort(flat_grid[top_indices])[::-1]]
 
     # Get the top values from the flattened grid
     top_values = flat_grid[top_indices]
 
     # Convert the 1D indices back to 2D coordinates
-    top_coords = np.unravel_index(top_indices, grid.shape)
+    top_coords = np.column_stack(np.unravel_index(top_indices, grid.shape))
 
     # Combine the coordinates and values into a list of tuples (row, col, value)
-    top_sections = list(zip(top_coords[0], top_coords[1], top_values))
+    top_sections = list(zip(top_coords[:, 0], top_coords[:, 1], top_values))
 
-    return top_sections
+    # Initialize the filtered sections with the first top section
+    filtered_sections = [top_sections[0]]
+
+    # Compute distances once for all top sections
+    distances = cdist(top_coords, top_coords)
+
+    # Filter out sections that are not close to each other
+    for i in range(1, len(top_sections)):
+        section = top_sections[i]
+        if any(distances[i, j] <= max_distance for j in range(len(filtered_sections))):
+            filtered_sections.append(section)
+        if len(filtered_sections) == top_x:
+            break
+
+    # If not enough sections found, expand the search
+    if len(filtered_sections) < top_x:
+        for i in range(len(top_sections)):
+            if top_sections[i] not in filtered_sections:
+                if any(
+                    distances[i, j] <= max_distance
+                    for j in range(len(filtered_sections))
+                ):
+                    filtered_sections.append(top_sections[i])
+                if len(filtered_sections) == top_x:
+                    break
+
+    return filtered_sections
 
 
 # Calculate the horizontal range of the top sections
@@ -269,23 +373,19 @@ def draw_dotted_line(image, start_point, end_point, color, thickness, gap):
 def draw_vertical_center_line(image, thickness=1, gap=10):
     h, w = image.shape[:2]
     center_x = w // 2
-    # get 20 degree lines from center
-    HORIZONTAL_FOV_DEGREE_PER_PIXEL = 0.1  # example value
-    pixel_count_20 = math.ceil(20 / HORIZONTAL_FOV_DEGREE_PER_PIXEL)
-
     # Draw dotted off-center lines
     draw_dotted_line(
         image,
-        (center_x - pixel_count_20, 0),
-        (center_x - pixel_count_20, h),
+        (center_x - HORIZONTAL_20_DEGREES, 0),
+        (center_x - HORIZONTAL_20_DEGREES, h),
         (255, 255, 255),
         thickness,
         gap,
     )
     draw_dotted_line(
         image,
-        (center_x + pixel_count_20, 0),
-        (center_x + pixel_count_20, h),
+        (center_x + HORIZONTAL_20_DEGREES, 0),
+        (center_x + HORIZONTAL_20_DEGREES, h),
         (255, 255, 255),
         thickness,
         gap,
@@ -304,3 +404,47 @@ def draw_horizontal_center_line(image, thickness=1):
         image, (0, center_y), (w, center_y), (255, 255, 255), thickness
     )  # White line with specified thickness
     return image
+
+
+def draw_overlay_flow_map(flow, image):
+    h, w = image.shape[:2]
+    flow_map = np.zeros_like(image)
+
+    step = 16
+    y, x = np.mgrid[step / 2 : h : step, step / 2 : w : step].reshape(2, -1).astype(int)
+    fx, fy = flow[y, x].T
+
+    lines = np.vstack([x, y, x + fx, y + fy]).T.reshape(-1, 2, 2)
+    lines = np.int32(lines)
+    for (x1, y1), (x2, y2) in lines:
+        cv2.line(flow_map, (x1, y1), (x2, y2), (0, 255, 0), 1)
+        cv2.circle(flow_map, (x1, y1), 1, (0, 255, 0), -1)
+
+    overlay = cv2.addWeighted(image, 0.7, flow_map, 0.3, 0)
+    return overlay
+
+
+def draw_angle_map(angle, image):
+    h, w = image.shape[:2]
+    angle_map = np.zeros((h, w, 3), dtype=np.uint8)
+
+    step = 64
+    y, x = (
+        np.mgrid[step // 2 : h : step, step // 2 : w : step].reshape(2, -1).astype(int)
+    )
+    angles = angle[y, x]
+
+    for i, (x1, y1) in enumerate(zip(x, y)):
+        angle_text = f"{angles[i] * 180 / np.pi:.1f}"  # Convert radians to degrees
+        cv2.putText(
+            angle_map,
+            angle_text,
+            (x1, y1),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.4,
+            (255, 255, 255),
+            1,
+            cv2.LINE_AA,
+        )
+
+    return angle_map

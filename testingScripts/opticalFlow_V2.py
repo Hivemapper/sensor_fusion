@@ -12,12 +12,14 @@ from opticalFlowHelpers import (
     process_mag_and_angle_for_lines,
     draw_vertical_center_line,
     draw_horizontal_center_line,
+    draw_overlay_flow_map,
+    draw_angle_map,
     HORIZONTAL_FOV_DEGREE_PER_PIXEL,
 )
 
 LINES_STEP_SIZE = 16
 GRID_SIZE = 16
-NUMBER_OF_TOP_SECTIONS = 5
+NUMBER_OF_TOP_SECTIONS = 6
 
 
 def calculate_optical_flow(directory, results_directory, parent_dir_name):
@@ -83,6 +85,8 @@ def calculate_optical_flow(directory, results_directory, parent_dir_name):
     sample_image_resized = draw_horizontal_center_line(sample_image_resized)
 
     ### Overlays
+    flow_map_overlay = draw_overlay_flow_map(average_flow, sample_image_resized)
+    # angle_map = draw_angle_map(angle, sample_image_resized)
     overlay_intersection_img = cv2.addWeighted(
         sample_image_resized, 0.5, intersection_img_resized, 0.5, 0
     )
@@ -119,6 +123,16 @@ def calculate_optical_flow(directory, results_directory, parent_dir_name):
         ),
         overlay_top_sections_img,
     )
+    cv2.imwrite(
+        os.path.join(
+            results_directory, f"{parent_dir_name}_Farneback_flow_map_overlay.jpg"
+        ),
+        flow_map_overlay,
+    )
+    # cv2.imwrite(
+    #     os.path.join(results_directory, f"{parent_dir_name}_Farneback_angle_map.jpg"),
+    #     angle_map,
+    # )
 
 
 if __name__ == "__main__":
