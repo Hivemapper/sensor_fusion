@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 import math
 import os
+from multiprocessing import Pool, cpu_count
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from scipy.spatial.distance import cdist
 
@@ -24,23 +25,114 @@ MAGNITUDE_BORDER_TRIMMING = 10
 ########### Math Functions ############
 
 
+# def calculate_flow(pair):
+#     try:
+#         prev_gray, curr_gray = pair
+#         flow = cv2.calcOpticalFlowFarneback(
+#             prev_gray, curr_gray, None, 0.5, 3, 15, 3, 5, 1.2, 0
+#         )
+#         return flow
+#     except Exception as e:
+#         logger.error(f"Error in calculate_flow: {e}")
+#         raise
+
+
+# def process_batch(batch_pairs):
+#     try:
+#         accumulated_flow = None
+#         count = 0
+#         for pair in batch_pairs:
+#             flow = calculate_flow(pair)
+#             if accumulated_flow is None:
+#                 accumulated_flow = np.zeros_like(flow)
+#             accumulated_flow += flow
+#             count += 1
+#         return accumulated_flow, count
+#     except Exception as e:
+#         logger.error(f"Error in process_batch: {e}")
+#         raise
+
+
+# def calculate_farneback_optical_flow(directory, step=1, max_processes=5, batch_size=1):
+#     logger.info(f"FrameKM being evaluated: {directory}")
+#     image_files = sorted(
+#         [f for f in os.listdir(directory) if f.endswith(".jpg")],
+#         key=lambda x: int(x.split(".")[0]),
+#     )
+#     img_count = len(image_files)
+#     if img_count > 20:
+#         img_count = 20
+#     logger.info(f" Image files length: {img_count}")
+#     last_image_path = os.path.join(directory, image_files[img_count - 1])
+
+#     pairs = [
+#         (
+#             cv2.cvtColor(
+#                 cv2.imread(os.path.join(directory, image_files[i])), cv2.COLOR_BGR2GRAY
+#             ),
+#             cv2.cvtColor(
+#                 cv2.imread(os.path.join(directory, image_files[i + step])),
+#                 cv2.COLOR_BGR2GRAY,
+#             ),
+#         )
+#         for i in range(0, img_count - step, step)
+#     ]
+
+#     total_accumulated_flow = None
+#     total_count = 0
+
+#     with ProcessPoolExecutor(max_workers=max_processes) as executor:
+#         futures = []
+#         for i in range(0, len(pairs), batch_size):
+#             batch_pairs = pairs[i : i + batch_size]
+#             futures.append(executor.submit(process_batch, batch_pairs))
+
+#         for future in as_completed(futures):
+#             try:
+#                 accumulated_flow, count = future.result()
+#                 if total_accumulated_flow is None:
+#                     total_accumulated_flow = np.zeros_like(accumulated_flow)
+#                 total_accumulated_flow += accumulated_flow
+#                 total_count += count
+#             except Exception as e:
+#                 logger.error(f"Error processing batch: {e}")
+
+#     if total_count > 0:
+#         average_flow = total_accumulated_flow / total_count
+#     else:
+#         average_flow = None
+
+#     return average_flow, last_image_path, img_count
+
+
 def calculate_flow(pair):
     prev_gray, curr_gray = pair
     flow = cv2.calcOpticalFlowFarneback(
-        prev_gray, curr_gray, None, 0.5, 3, 15, 3, 5, 1.2, 0
+        prev_gray,
+        curr_gray,
+        None,
+        pyr_scale=0.5,  # Default is 0.5
+        levels=4,  # Default is 3, fewer levels to reduce computation
+        winsize=20,  # Increased window size
+        iterations=1,  # Default is 3, fewer iterations
+        poly_n=5,  # Default is 5 or 7, smaller neighborhood
+        poly_sigma=1.1,  # Default is 1.2, slightly lower sigma
+        flags=0,  # Default flags
     )
     return flow
 
 
-def calculate_franeback_optical_flow(directory, step=1):
+def calculate_farneback_optical_flow(directory, step=1, max_threads=3):
     print(f"FrameKM being evaluated: {directory}")
     image_files = sorted(
         [f for f in os.listdir(directory) if f.endswith(".jpg")],
         key=lambda x: int(x.split(".")[0]),
     )
     img_count = len(image_files)
+    if img_count > 15:
+        img_count = 15
     print(f" Image files length: {img_count}")
-    last_image_path = os.path.join(directory, image_files[-1])
+    last_image_path = os.path.join(directory, image_files[img_count - 1])
 
     accumulated_flow = None
     count = 0
@@ -58,7 +150,7 @@ def calculate_franeback_optical_flow(directory, step=1):
         for i in range(0, img_count - step, step)
     ]
 
-    with ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor(max_workers=max_threads) as executor:
         futures = [executor.submit(calculate_flow, pair) for pair in pairs]
         for future in as_completed(futures):
             flow = future.result()
@@ -71,7 +163,7 @@ def calculate_franeback_optical_flow(directory, step=1):
     return average_flow, last_image_path, img_count
 
 
-# def calculate_franeback_optical_flow(directory):
+# def calculate_farneback_optical_flow(directory, step=1):
 #     print(f"FrameKM being evaluated: {directory}")
 #     # Get a sorted list of image filenames
 #     image_files = sorted(
@@ -79,23 +171,18 @@ def calculate_franeback_optical_flow(directory, step=1):
 #         key=lambda x: int(x.split(".")[0]),
 #     )
 #     img_count = len(image_files)
+#     if img_count > 20:
+#         img_count = 20
 #     print(f" Image files length: {img_count}")
-#     last_image_path = os.path.join(directory, image_files[-1])
+#     last_image_path = os.path.join(directory, image_files[img_count - 1])
 
 #     # Initialize the optical flow accumulator
 #     accumulated_flow = None
 #     count = 0
 
-#     # Calculate step size depending on the number of images
-#     if img_count < 8:
-#         step = 1
-#     elif img_count < 16:
-#         step = 2
-#     else:
-#         step = 3
-
 #     # Iterate through the image files to calculate optical flow
-#     for i in range(1, len(image_files), step):
+#     for i in range(1, img_count, step):
+#         print(f"Processing images {i} and {i - 1}")
 #         prev_img = cv2.imread(os.path.join(directory, image_files[i - 1]))
 #         curr_img = cv2.imread(os.path.join(directory, image_files[i]))
 
@@ -116,7 +203,7 @@ def calculate_franeback_optical_flow(directory, step=1):
 
 #     # Calculate the average optical flow
 #     average_flow = accumulated_flow / count
-#     return average_flow, last_image_path
+#     return average_flow, last_image_path, img_count
 
 
 # def process_mag_and_angle_for_lines(magnitude, angle, h, w, step=16):
@@ -152,57 +239,120 @@ def calculate_franeback_optical_flow(directory, step=1):
 #     return np.array(lines)
 
 
-def process_mag_and_angle_for_lines(magnitude, angle, h, w, step=1):
-    # Create a mask to zero out magnitudes and angles within the border or below the threshold
-    mask = (
-        (magnitude < MAGNITUDE_THRESHOLD)
-        | (np.arange(magnitude.shape[0])[:, None] < MAGNITUDE_BORDER_TRIMMING)
-        | (
-            np.arange(magnitude.shape[0])[:, None]
+# def process_mag_and_angle_for_lines(magnitude, angle, h, w, step=1):
+#     # Create a mask to zero out magnitudes and angles within the border or below the threshold
+#     mask = (
+#         (magnitude < MAGNITUDE_THRESHOLD)
+#         | (np.arange(magnitude.shape[0])[:, None] < MAGNITUDE_BORDER_TRIMMING)
+#         | (
+#             np.arange(magnitude.shape[0])[:, None]
+#             >= magnitude.shape[0] - MAGNITUDE_BORDER_TRIMMING
+#         )
+#         | (np.arange(magnitude.shape[1]) < MAGNITUDE_BORDER_TRIMMING)
+#         | (
+#             np.arange(magnitude.shape[1])
+#             >= magnitude.shape[1] - MAGNITUDE_BORDER_TRIMMING
+#         )
+#     )
+
+#     magnitude[mask] = 0
+#     angle[mask] = 0
+
+#     # Recreate the flow vectors from magnitude and angle
+#     fx = magnitude * np.cos(angle)
+#     fy = magnitude * np.sin(angle)
+
+#     # Generate grid of start points
+#     y_grid, x_grid = np.meshgrid(
+#         np.arange(0, h, step), np.arange(0, w, step), indexing="ij"
+#     )
+
+#     # Calculate end points
+#     end_x = x_grid + fx[::step, ::step]
+#     end_y = y_grid + fy[::step, ::step]
+
+#     # Filter out points with zero magnitude and where end point is the same as start point
+#     valid_mask = (magnitude[::step, ::step] > 0) & (
+#         (end_x != x_grid) | (end_y != y_grid)
+#     )
+
+#     start_points = np.vstack([x_grid[valid_mask], y_grid[valid_mask]]).T
+#     end_points = np.vstack([end_x[valid_mask], end_y[valid_mask]]).T
+
+#     # Calculate slopes and create lines
+#     slopes = (end_points[:, 1] - start_points[:, 1]) / (
+#         end_points[:, 0] - start_points[:, 0]
+#     )
+#     lines = [
+#         line_from_slope_and_point(slope, start_point)
+#         for slope, start_point in zip(slopes, start_points)
+#     ]
+
+#     print(f" Number of lines: {len(lines)}")
+#     return np.array(lines)
+
+
+# Optimized function with memory error handling
+def process_mag_and_angle_for_lines_optimized(magnitude, angle, h, w, step=1):
+    try:
+        # Create border masks
+        row_mask = (np.arange(magnitude.shape[0]) < MAGNITUDE_BORDER_TRIMMING) | (
+            np.arange(magnitude.shape[0])
             >= magnitude.shape[0] - MAGNITUDE_BORDER_TRIMMING
         )
-        | (np.arange(magnitude.shape[1]) < MAGNITUDE_BORDER_TRIMMING)
-        | (
+        col_mask = (np.arange(magnitude.shape[1]) < MAGNITUDE_BORDER_TRIMMING) | (
             np.arange(magnitude.shape[1])
             >= magnitude.shape[1] - MAGNITUDE_BORDER_TRIMMING
         )
-    )
 
-    magnitude[mask] = 0
-    angle[mask] = 0
+        # Apply the border mask to magnitude and angle
+        magnitude[row_mask, :] = 0
+        magnitude[:, col_mask] = 0
+        angle[row_mask, :] = 0
+        angle[:, col_mask] = 0
 
-    # Recreate the flow vectors from magnitude and angle
-    fx = magnitude * np.cos(angle)
-    fy = magnitude * np.sin(angle)
+        # Apply magnitude threshold
+        magnitude[magnitude < MAGNITUDE_THRESHOLD] = 0
+        angle[magnitude < MAGNITUDE_THRESHOLD] = 0
 
-    # Generate grid of start points
-    y_grid, x_grid = np.meshgrid(
-        np.arange(0, h, step), np.arange(0, w, step), indexing="ij"
-    )
+        # Recreate the flow vectors from magnitude and angle
+        fx = magnitude * np.cos(angle)
+        fy = magnitude * np.sin(angle)
 
-    # Calculate end points
-    end_x = x_grid + fx[::step, ::step]
-    end_y = y_grid + fy[::step, ::step]
+        # Generate grid of start points
+        y_grid, x_grid = np.meshgrid(
+            np.arange(0, h, step), np.arange(0, w, step), indexing="ij"
+        )
 
-    # Filter out points with zero magnitude and where end point is the same as start point
-    valid_mask = (magnitude[::step, ::step] > 0) & (
-        (end_x != x_grid) | (end_y != y_grid)
-    )
+        fx = fx[::step, ::step]
+        fy = fy[::step, ::step]
+        end_x = x_grid + fx
+        end_y = y_grid + fy
 
-    start_points = np.vstack([x_grid[valid_mask], y_grid[valid_mask]]).T
-    end_points = np.vstack([end_x[valid_mask], end_y[valid_mask]]).T
+        # Filter out points with zero magnitude and where end point is the same as start point
+        valid_mask = (magnitude[::step, ::step] > 0) & (
+            (end_x != x_grid) | (end_y != y_grid)
+        )
 
-    # Calculate slopes and create lines
-    slopes = (end_points[:, 1] - start_points[:, 1]) / (
-        end_points[:, 0] - start_points[:, 0]
-    )
-    lines = [
-        line_from_slope_and_point(slope, start_point)
-        for slope, start_point in zip(slopes, start_points)
-    ]
+        start_points = np.column_stack((x_grid[valid_mask], y_grid[valid_mask]))
+        end_points = np.column_stack((end_x[valid_mask], end_y[valid_mask]))
 
-    print(f" Number of lines: {len(lines)}")
-    return np.array(lines)
+        slopes = (end_points[:, 1] - start_points[:, 1]) / (
+            end_points[:, 0] - start_points[:, 0]
+        )
+        lines = [
+            line_from_slope_and_point(slope, start_point)
+            for slope, start_point in zip(slopes, start_points)
+        ]
+
+        print(f" Number of lines: {len(lines)}")
+        return np.array(lines)
+
+    except MemoryError:
+        print(
+            " MemoryError: Not enough memory to process the data. Consider using smaller data or increasing available memory."
+        )
+        return None
 
 
 def calculate_boundary_points(start_point, slope, image_width, image_height):
@@ -260,49 +410,46 @@ def line_from_slope_and_point(slope, point):
 
 
 def find_intersections_within_bounds(lines, width, height):
-    intersections = []
+    try:
+        intersections = []
 
-    # Extract slopes and intercepts
-    slopes = np.array([line[0] for line in lines])
-    intercepts = np.array([line[1] for line in lines])
+        # Extract slopes and intercepts
+        slopes = np.array([line[0] for line in lines])
+        intercepts = np.array([line[1] for line in lines])
 
-    # Create a meshgrid for pairs of lines
-    idx1, idx2 = np.triu_indices(len(lines), k=1)
+        # Create a meshgrid for pairs of lines
+        idx1, idx2 = np.triu_indices(len(lines), k=1)
 
-    m1 = slopes[idx1]
-    c1 = intercepts[idx1]
-    m2 = slopes[idx2]
-    c2 = intercepts[idx2]
+        m1 = slopes[idx1]
+        c1 = intercepts[idx1]
+        m2 = slopes[idx2]
+        c2 = intercepts[idx2]
 
-    # Calculate intersections
-    valid = m1 != m2
-    x = (c2[valid] - c1[valid]) / (m1[valid] - m2[valid])
-    y = m1[valid] * x + c1[valid]
+        # Calculate intersections
+        valid = m1 != m2
+        x = (c2[valid] - c1[valid]) / (m1[valid] - m2[valid])
+        y = m1[valid] * x + c1[valid]
 
-    # Round the coordinates
-    x_rounded = np.round(x).astype(int)
-    y_rounded = np.round(y).astype(int)
+        # Round the coordinates
+        x_rounded = np.round(x).astype(int)
+        y_rounded = np.round(y).astype(int)
 
-    # Filter intersections within bounds
-    in_bounds = (
-        (0 <= x_rounded) & (x_rounded < width) & (0 <= y_rounded) & (y_rounded < height)
-    )
-    intersections = np.vstack((x_rounded[in_bounds], y_rounded[in_bounds])).T
+        # Filter intersections within bounds
+        in_bounds = (
+            (0 <= x_rounded)
+            & (x_rounded < width)
+            & (0 <= y_rounded)
+            & (y_rounded < height)
+        )
+        intersections = np.vstack((x_rounded[in_bounds], y_rounded[in_bounds])).T
 
-    return intersections
+        return intersections
 
-
-# def count_intersections_in_grid(intersections, width, height, grid_size=16):
-#     grid_height = height // grid_size
-#     grid_width = width // grid_size
-#     grid = np.zeros((grid_height, grid_width), dtype=int)
-#     grid_indices = (intersections // grid_size).astype(int)
-
-#     for x_idx, y_idx in grid_indices:
-#         if 0 <= x_idx < grid_width and 0 <= y_idx < grid_height:
-#             grid[y_idx, x_idx] += 1
-
-#     return grid
+    except MemoryError:
+        print(
+            " MemoryError: Not enough memory to process the data. Consider using smaller data or increasing available memory."
+        )
+        return None
 
 
 # def count_intersections_in_grid(
@@ -426,18 +573,6 @@ def get_top_x_sections(grid, top_x):
 #                     break
 
 #     return filtered_sections
-
-
-# Calculate the horizontal range of the top sections
-# def get_horizontal_range_of_top_sections(top_sections, grid_size):
-#     # Extract x-coordinates (column indices) of the top sections
-#     x_coords = [x_idx * grid_size for _, x_idx, _ in top_sections]
-
-#     # Find the minimum and maximum x-coordinates
-#     min_x = min(x_coords)
-#     max_x = max(x_coords)
-
-#     return min_x, max_x
 
 
 def get_horizontal_range_of_top_sections(top_sections, grid_size):
