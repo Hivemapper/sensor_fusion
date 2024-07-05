@@ -32,7 +32,7 @@ def calculate_flow(pair):
     return flow
 
 
-def calculate_franeback_optical_flow(directory):
+def calculate_franeback_optical_flow(directory, step=1):
     print(f"FrameKM being evaluated: {directory}")
     image_files = sorted(
         [f for f in os.listdir(directory) if f.endswith(".jpg")],
@@ -44,12 +44,6 @@ def calculate_franeback_optical_flow(directory):
 
     accumulated_flow = None
     count = 0
-
-    step = 1
-    # if img_count < 20:
-    #     step = 1
-    # else:
-    #     step = 2
 
     pairs = [
         (
@@ -74,7 +68,7 @@ def calculate_franeback_optical_flow(directory):
             count += 1
 
     average_flow = accumulated_flow / count
-    return average_flow, last_image_path
+    return average_flow, last_image_path, img_count
 
 
 # def calculate_franeback_optical_flow(directory):
@@ -125,40 +119,88 @@ def calculate_franeback_optical_flow(directory):
 #     return average_flow, last_image_path
 
 
-def process_mag_and_angle_for_lines(magnitude, angle, h, w, step=16):
-    # Store lines for intersection calculations
-    lines = []
-    for y in range(magnitude.shape[0]):  # Iterate over rows (top to bottom)
-        for x in range(magnitude.shape[1]):  # Iterate over columns (left to right)
-            if (
-                x < MAGNITUDE_BORDER_TRIMMING
-                or x >= magnitude.shape[1] - MAGNITUDE_BORDER_TRIMMING
-                or y < MAGNITUDE_BORDER_TRIMMING
-                or y >= magnitude.shape[0] - MAGNITUDE_BORDER_TRIMMING
-                or magnitude[y, x] < MAGNITUDE_THRESHOLD
-            ):
-                magnitude[y, x] = 0  # Set magnitudes within the border to 0
+# def process_mag_and_angle_for_lines(magnitude, angle, h, w, step=16):
+#     # Store lines for intersection calculations
+#     lines = []
+#     for y in range(magnitude.shape[0]):  # Iterate over rows (top to bottom)
+#         for x in range(magnitude.shape[1]):  # Iterate over columns (left to right)
+#             if (
+#                 x < MAGNITUDE_BORDER_TRIMMING
+#                 or x >= magnitude.shape[1] - MAGNITUDE_BORDER_TRIMMING
+#                 or y < MAGNITUDE_BORDER_TRIMMING
+#                 or y >= magnitude.shape[0] - MAGNITUDE_BORDER_TRIMMING
+#                 or magnitude[y, x] < MAGNITUDE_THRESHOLD
+#             ):
+#                 magnitude[y, x] = 0  # Set magnitudes within the border to 0
+#                 angle[y, x] = 0  # Set angles where the magnitude is 0 to 0
 
-    # Ignore angles where the magnitude is 0
-    for y in range(angle.shape[0]):  # Iterate over rows (top to bottom)
-        for x in range(angle.shape[1]):  # Iterate over columns (left to right)
-            if magnitude[y, x] == 0:
-                angle[y, x] = 0
+#     # Recreate the flow vectors from magnitude and angle
+#     fx = magnitude * np.cos(angle)
+#     fy = magnitude * np.sin(angle)
+
+#     for y in range(0, h, step):
+#         for x in range(0, w, step):
+#             start_point = (x, y)
+#             end_point = (int(x + fx[y, x]), int(y + fy[y, x]))
+#             if magnitude[y, x] > 0 and end_point[0] != start_point[0]:
+#                 slope = (end_point[1] - start_point[1]) / (
+#                     end_point[0] - start_point[0]
+#                 )
+#                 # Add filter conditions to ignore noisy lines
+#                 lines.append(line_from_slope_and_point(slope, start_point))
+#     print(f" Number of lines: {len(lines)}")
+#     return np.array(lines)
+
+
+def process_mag_and_angle_for_lines(magnitude, angle, h, w, step=1):
+    # Create a mask to zero out magnitudes and angles within the border or below the threshold
+    mask = (
+        (magnitude < MAGNITUDE_THRESHOLD)
+        | (np.arange(magnitude.shape[0])[:, None] < MAGNITUDE_BORDER_TRIMMING)
+        | (
+            np.arange(magnitude.shape[0])[:, None]
+            >= magnitude.shape[0] - MAGNITUDE_BORDER_TRIMMING
+        )
+        | (np.arange(magnitude.shape[1]) < MAGNITUDE_BORDER_TRIMMING)
+        | (
+            np.arange(magnitude.shape[1])
+            >= magnitude.shape[1] - MAGNITUDE_BORDER_TRIMMING
+        )
+    )
+
+    magnitude[mask] = 0
+    angle[mask] = 0
 
     # Recreate the flow vectors from magnitude and angle
     fx = magnitude * np.cos(angle)
     fy = magnitude * np.sin(angle)
 
-    for y in range(0, h, step):
-        for x in range(0, w, step):
-            start_point = (x, y)
-            end_point = (int(x + fx[y, x]), int(y + fy[y, x]))
-            if magnitude[y, x] > 0 and end_point[0] != start_point[0]:
-                slope = (end_point[1] - start_point[1]) / (
-                    end_point[0] - start_point[0]
-                )
-                # Add filter conditions to ignore noisy lines
-                lines.append(line_from_slope_and_point(slope, start_point))
+    # Generate grid of start points
+    y_grid, x_grid = np.meshgrid(
+        np.arange(0, h, step), np.arange(0, w, step), indexing="ij"
+    )
+
+    # Calculate end points
+    end_x = x_grid + fx[::step, ::step]
+    end_y = y_grid + fy[::step, ::step]
+
+    # Filter out points with zero magnitude and where end point is the same as start point
+    valid_mask = (magnitude[::step, ::step] > 0) & (
+        (end_x != x_grid) | (end_y != y_grid)
+    )
+
+    start_points = np.vstack([x_grid[valid_mask], y_grid[valid_mask]]).T
+    end_points = np.vstack([end_x[valid_mask], end_y[valid_mask]]).T
+
+    # Calculate slopes and create lines
+    slopes = (end_points[:, 1] - start_points[:, 1]) / (
+        end_points[:, 0] - start_points[:, 0]
+    )
+    lines = [
+        line_from_slope_and_point(slope, start_point)
+        for slope, start_point in zip(slopes, start_points)
+    ]
+
     print(f" Number of lines: {len(lines)}")
     return np.array(lines)
 
@@ -200,21 +242,54 @@ def line_from_slope_and_point(slope, point):
     return slope, intercept
 
 
+# def find_intersections_within_bounds(lines, width, height):
+#     intersections = []
+#     num_lines = len(lines)
+#     for i in range(num_lines):
+#         m1, c1 = lines[i]
+#         for j in range(i + 1, num_lines):
+#             m2, c2 = lines[j]
+#             if m1 != m2:
+#                 x = (c2 - c1) / (m1 - m2)
+#                 y = m1 * x + c1
+#                 x_rounded = round(x)
+#                 y_rounded = round(y)
+#                 if 0 <= x_rounded < width and 0 <= y_rounded < height:
+#                     intersections.append((x_rounded, y_rounded))
+#     return np.array(intersections)
+
+
 def find_intersections_within_bounds(lines, width, height):
     intersections = []
-    num_lines = len(lines)
-    for i in range(num_lines):
-        m1, c1 = lines[i]
-        for j in range(i + 1, num_lines):
-            m2, c2 = lines[j]
-            if m1 != m2:
-                x = (c2 - c1) / (m1 - m2)
-                y = m1 * x + c1
-                x_rounded = round(x)
-                y_rounded = round(y)
-                if 0 <= x_rounded < width and 0 <= y_rounded < height:
-                    intersections.append((x_rounded, y_rounded))
-    return np.array(intersections)
+
+    # Extract slopes and intercepts
+    slopes = np.array([line[0] for line in lines])
+    intercepts = np.array([line[1] for line in lines])
+
+    # Create a meshgrid for pairs of lines
+    idx1, idx2 = np.triu_indices(len(lines), k=1)
+
+    m1 = slopes[idx1]
+    c1 = intercepts[idx1]
+    m2 = slopes[idx2]
+    c2 = intercepts[idx2]
+
+    # Calculate intersections
+    valid = m1 != m2
+    x = (c2[valid] - c1[valid]) / (m1[valid] - m2[valid])
+    y = m1[valid] * x + c1[valid]
+
+    # Round the coordinates
+    x_rounded = np.round(x).astype(int)
+    y_rounded = np.round(y).astype(int)
+
+    # Filter intersections within bounds
+    in_bounds = (
+        (0 <= x_rounded) & (x_rounded < width) & (0 <= y_rounded) & (y_rounded < height)
+    )
+    intersections = np.vstack((x_rounded[in_bounds], y_rounded[in_bounds])).T
+
+    return intersections
 
 
 # def count_intersections_in_grid(intersections, width, height, grid_size=16):
@@ -230,12 +305,38 @@ def find_intersections_within_bounds(lines, width, height):
 #     return grid
 
 
+# def count_intersections_in_grid(
+#     intersections, width, height, grid_size=16, left_bound=None, right_bound=None
+# ):
+#     mid_point = width // 2
+#     left_bound = left_bound if left_bound else mid_point - HORIZONTAL_30_DEGREES
+#     right_bound = right_bound if right_bound else mid_point + HORIZONTAL_30_DEGREES
+
+#     grid_height = height // grid_size
+#     grid_width = width // grid_size
+#     grid = np.zeros((grid_height, grid_width), dtype=int)
+#     grid_indices = (intersections // grid_size).astype(int)
+
+#     left_bound_idx = left_bound // grid_size
+#     right_bound_idx = right_bound // grid_size
+
+#     for x_idx, y_idx in grid_indices:
+#         if left_bound_idx <= x_idx < right_bound_idx and 0 <= y_idx < grid_height:
+#             grid[y_idx, x_idx] += 1
+
+#     return grid
+
+
 def count_intersections_in_grid(
     intersections, width, height, grid_size=16, left_bound=None, right_bound=None
 ):
     mid_point = width // 2
-    left_bound = left_bound if left_bound else mid_point - HORIZONTAL_30_DEGREES
-    right_bound = right_bound if right_bound else mid_point + HORIZONTAL_30_DEGREES
+    left_bound = (
+        left_bound if left_bound is not None else mid_point - HORIZONTAL_30_DEGREES
+    )
+    right_bound = (
+        right_bound if right_bound is not None else mid_point + HORIZONTAL_30_DEGREES
+    )
 
     grid_height = height // grid_size
     grid_width = width // grid_size
@@ -245,119 +346,114 @@ def count_intersections_in_grid(
     left_bound_idx = left_bound // grid_size
     right_bound_idx = right_bound // grid_size
 
-    for x_idx, y_idx in grid_indices:
-        if left_bound_idx <= x_idx < right_bound_idx and 0 <= y_idx < grid_height:
-            grid[y_idx, x_idx] += 1
+    # Filter out indices that are out of bounds
+    valid_indices = (
+        (grid_indices[:, 0] >= left_bound_idx)
+        & (grid_indices[:, 0] < right_bound_idx)
+        & (grid_indices[:, 1] >= 0)
+        & (grid_indices[:, 1] < grid_height)
+    )
+    filtered_indices = grid_indices[valid_indices]
+
+    # Use numpy's advanced indexing to count occurrences
+    np.add.at(grid, (filtered_indices[:, 1], filtered_indices[:, 0]), 1)
 
     return grid
 
 
 # TODO: Handle cases where outliers exist, need to remove them
-# def get_top_x_sections(grid, top_x):
-#     # Flatten the 2D grid into a 1D array
-#     flat_grid = grid.flatten()
-
-#     # Get indices of the top X values in the flattened array, sorted in descending order
-#     top_indices = np.argsort(flat_grid)[-top_x:][::-1]
-
-#     # Get the top values from the flattened grid
-#     top_values = flat_grid[top_indices]
-
-#     # Convert the 1D indices back to 2D coordinates
-#     top_coords = np.unravel_index(top_indices, grid.shape)
-
-#     # Combine the coordinates and values into a list of tuples (row, col, value)
-#     top_sections = list(zip(top_coords[0], top_coords[1], top_values))
-
-#     return top_sections
-
-
-# def get_top_x_sections(grid, top_x, max_distance=8):
-#     # Flatten the 2D grid into a 1D array
-#     flat_grid = grid.flatten()
-
-#     # Get indices of the top X values in the flattened array, sorted in descending order
-#     top_indices = np.argsort(flat_grid)[-top_x:][::-1]
-
-#     # Get the top values from the flattened grid
-#     top_values = flat_grid[top_indices]
-
-#     # Convert the 1D indices back to 2D coordinates
-#     top_coords = np.unravel_index(top_indices, grid.shape)
-#     top_coords = np.column_stack(top_coords)  # Convert to (row, col) format
-
-#     # Combine the coordinates and values into a list of tuples (row, col, value)
-#     top_sections = list(zip(top_coords[:, 0], top_coords[:, 1], top_values))
-
-#     # Filter out sections that are not close to each other
-#     filtered_sections = [top_sections[0]]  # Start with the first section
-#     for section in top_sections[1:]:
-#         distances = cdist(
-#             [section[:2]], [s[:2] for s in filtered_sections], metric="euclidean"
-#         )
-#         if np.any(distances <= max_distance):
-#             filtered_sections.append(section)
-
-#     return filtered_sections
-
-
-def get_top_x_sections(grid, top_x, max_distance=5):
+def get_top_x_sections(grid, top_x):
     # Flatten the 2D grid into a 1D array
     flat_grid = grid.flatten()
 
-    # Get indices of the top 2*top_x values in the flattened array, sorted in descending order
-    initial_pool_size = top_x * 2
-    top_indices = np.argpartition(flat_grid, -initial_pool_size)[-initial_pool_size:]
-    top_indices = top_indices[np.argsort(flat_grid[top_indices])[::-1]]
+    # Get indices of the top X values in the flattened array, sorted in descending order
+    top_indices = np.argsort(flat_grid)[-top_x:][::-1]
 
     # Get the top values from the flattened grid
     top_values = flat_grid[top_indices]
 
     # Convert the 1D indices back to 2D coordinates
-    top_coords = np.column_stack(np.unravel_index(top_indices, grid.shape))
+    top_coords = np.unravel_index(top_indices, grid.shape)
 
     # Combine the coordinates and values into a list of tuples (row, col, value)
-    top_sections = list(zip(top_coords[:, 0], top_coords[:, 1], top_values))
+    top_sections = list(zip(top_coords[0], top_coords[1], top_values))
 
-    # Initialize the filtered sections with the first top section
-    filtered_sections = [top_sections[0]]
+    return top_sections
 
-    # Compute distances once for all top sections
-    distances = cdist(top_coords, top_coords)
 
-    # Filter out sections that are not close to each other
-    for i in range(1, len(top_sections)):
-        section = top_sections[i]
-        if any(distances[i, j] <= max_distance for j in range(len(filtered_sections))):
-            filtered_sections.append(section)
-        if len(filtered_sections) == top_x:
-            break
+# def get_top_x_sections(grid, top_x, max_distance=5):
+#     # Flatten the 2D grid into a 1D array
+#     flat_grid = grid.flatten()
 
-    # If not enough sections found, expand the search
-    if len(filtered_sections) < top_x:
-        for i in range(len(top_sections)):
-            if top_sections[i] not in filtered_sections:
-                if any(
-                    distances[i, j] <= max_distance
-                    for j in range(len(filtered_sections))
-                ):
-                    filtered_sections.append(top_sections[i])
-                if len(filtered_sections) == top_x:
-                    break
+#     # Get indices of the top 2*top_x values in the flattened array, sorted in descending order
+#     initial_pool_size = top_x * 2
+#     top_indices = np.argpartition(flat_grid, -initial_pool_size)[-initial_pool_size:]
+#     top_indices = top_indices[np.argsort(flat_grid[top_indices])[::-1]]
 
-    return filtered_sections
+#     # Get the top values from the flattened grid
+#     top_values = flat_grid[top_indices]
+
+#     # Convert the 1D indices back to 2D coordinates
+#     top_coords = np.column_stack(np.unravel_index(top_indices, grid.shape))
+
+#     # Combine the coordinates and values into a list of tuples (row, col, value)
+#     top_sections = list(zip(top_coords[:, 0], top_coords[:, 1], top_values))
+
+#     # Initialize the filtered sections with the first top section
+#     filtered_sections = [top_sections[0]]
+
+#     # Compute distances once for all top sections
+#     distances = cdist(top_coords, top_coords)
+
+#     # Filter out sections that are not close to each other
+#     for i in range(1, len(top_sections)):
+#         section = top_sections[i]
+#         if any(distances[i, j] <= max_distance for j in range(len(filtered_sections))):
+#             filtered_sections.append(section)
+#         if len(filtered_sections) == top_x:
+#             break
+
+#     # If not enough sections found, expand the search
+#     if len(filtered_sections) < top_x:
+#         for i in range(len(top_sections)):
+#             if top_sections[i] not in filtered_sections:
+#                 if any(
+#                     distances[i, j] <= max_distance
+#                     for j in range(len(filtered_sections))
+#                 ):
+#                     filtered_sections.append(top_sections[i])
+#                 if len(filtered_sections) == top_x:
+#                     break
+
+#     return filtered_sections
 
 
 # Calculate the horizontal range of the top sections
+# def get_horizontal_range_of_top_sections(top_sections, grid_size):
+#     # Extract x-coordinates (column indices) of the top sections
+#     x_coords = [x_idx * grid_size for _, x_idx, _ in top_sections]
+
+#     # Find the minimum and maximum x-coordinates
+#     min_x = min(x_coords)
+#     max_x = max(x_coords)
+
+#     return min_x, max_x
+
+
 def get_horizontal_range_of_top_sections(top_sections, grid_size):
-    # Extract x-coordinates (column indices) of the top sections
-    x_coords = [x_idx * grid_size for _, x_idx, _ in top_sections]
+    # Extract x-coordinates (column indices) and counts of the top sections
+    x_coords = np.array([x_idx * grid_size for _, x_idx, _ in top_sections])
+    counts = np.array([count for _, _, count in top_sections])
+
+    # Calculate the weighted average of the x-coordinates
+    weighted_average_x = np.average(x_coords, weights=counts)
+    weighted_average_x = round(weighted_average_x)
 
     # Find the minimum and maximum x-coordinates
-    min_x = min(x_coords)
-    max_x = max(x_coords)
+    min_x = np.min(x_coords)
+    max_x = np.max(x_coords)
 
-    return min_x, max_x
+    return int(min_x), int(max_x), int(weighted_average_x)
 
 
 ########### Drawing Functions ############

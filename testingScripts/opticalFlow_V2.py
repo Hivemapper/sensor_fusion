@@ -13,38 +13,53 @@ from opticalFlowHelpers import (
     draw_vertical_center_line,
     draw_horizontal_center_line,
     draw_overlay_flow_map,
-    draw_angle_map,
     HORIZONTAL_FOV_DEGREE_PER_PIXEL,
 )
 
-LINES_STEP_SIZE = 16
+LINES_STEP_SIZE = 12
 GRID_SIZE = 16
-NUMBER_OF_TOP_SECTIONS = 6
+NUMBER_OF_TOP_SECTIONS = 5
 
 
 def calculate_optical_flow(directory, results_directory, parent_dir_name):
-    curTime = time.time()
+    startTime = time.time()
     # Get optical flow map
-    average_flow, last_image_path = calculate_franeback_optical_flow(directory)
-    print(f" Optical flow calculation time: {time.time() - curTime} seconds")
+    average_flow, last_image_path, img_count = calculate_franeback_optical_flow(
+        directory
+    )
+    print(f" Optical flow calculation time: {time.time() - startTime} seconds")
     # Grab magnitudes and angles from flow map
     h = average_flow.shape[0]
     w = average_flow.shape[1]
+    pre_mag_time = time.time()
     magnitude, angle = cv2.cartToPolar(average_flow[..., 0], average_flow[..., 1])
+    print(
+        f" Magnitude and angle calculation time: {time.time() - pre_mag_time} seconds"
+    )
+    line_time = time.time()
     lines = process_mag_and_angle_for_lines(
         magnitude, angle, h, w, step=LINES_STEP_SIZE
     )
+    print(f" Line processing time: {time.time() - line_time} seconds")
     # Find intersection points within bounds
+    intersection_find_time = time.time()
     intersection_points = find_intersections_within_bounds(lines, w, h)
+    print(f" Intersection finding time: {time.time() - intersection_find_time} seconds")
     ### Math and drawing done for intersection point densities
+    grid_count_time = time.time()
     grid = count_intersections_in_grid(intersection_points, w, h, GRID_SIZE)
-
+    print(f" Grid count time: {time.time() - grid_count_time} seconds")
     ##### Math and overlay for top grid densities
+    top_sections_time = time.time()
     top_sections = get_top_x_sections(grid, NUMBER_OF_TOP_SECTIONS)
-    x_min, x_max = get_horizontal_range_of_top_sections(top_sections, GRID_SIZE)
-    mid_x = (x_min + x_max) // 2
-    device_offset = ((w // 2) - mid_x) * HORIZONTAL_FOV_DEGREE_PER_PIXEL
-    print(f" Total time taken: {time.time() - curTime} seconds")
+    x_min, x_max, x_weighted_ave = get_horizontal_range_of_top_sections(
+        top_sections, GRID_SIZE
+    )
+    # mid_x = (x_min + x_max) // 2
+    device_offset = ((w // 2) - x_weighted_ave) * HORIZONTAL_FOV_DEGREE_PER_PIXEL
+    print(f" Top sections calculation time: {time.time() - top_sections_time} seconds")
+    # print(f" Post flow processing time: {time.time() - line_time} seconds")
+    print(f" Total time taken: {time.time() - startTime} seconds")
     print(f" Device offset: {device_offset} degrees")
 
     ################# Image Plotting Section #################
@@ -71,7 +86,9 @@ def calculate_optical_flow(directory, results_directory, parent_dir_name):
             2,
         )
     # draw line at mid_x
-    cv2.line(overlay_top_sections, (mid_x, 0), (mid_x, h), (0, 0, 255), 2)
+    cv2.line(
+        overlay_top_sections, (x_weighted_ave, 0), (x_weighted_ave, h), (0, 0, 255), 2
+    )
 
     # Create a heatmap from the grid
     heatmap = np.uint8(255 * grid / np.max(grid))
@@ -101,31 +118,36 @@ def calculate_optical_flow(directory, results_directory, parent_dir_name):
     os.makedirs(results_directory, exist_ok=True)
     cv2.imwrite(
         os.path.join(
-            results_directory, f"{parent_dir_name}_Farneback_intersection.jpg"
+            results_directory,
+            f"{parent_dir_name}_Farneback_intersection_{img_count}.jpg",
         ),
         intersection_img,
     )
     cv2.imwrite(
         os.path.join(
-            results_directory, f"{parent_dir_name}_Farneback_overlay_intersection.jpg"
+            results_directory,
+            f"{parent_dir_name}_Farneback_overlay_intersection{img_count}.jpg",
         ),
         overlay_intersection_img,
     )
     cv2.imwrite(
         os.path.join(
-            results_directory, f"{parent_dir_name}_Farneback_intersection_density.jpg"
+            results_directory,
+            f"{parent_dir_name}_Farneback_intersection_density_{img_count}.jpg",
         ),
         overlay_density_img,
     )
     cv2.imwrite(
         os.path.join(
-            results_directory, f"{parent_dir_name}_Farneback_top_sections.jpg"
+            results_directory,
+            f"{parent_dir_name}_Farneback_top_sections_{img_count}.jpg",
         ),
         overlay_top_sections_img,
     )
     cv2.imwrite(
         os.path.join(
-            results_directory, f"{parent_dir_name}_Farneback_flow_map_overlay.jpg"
+            results_directory,
+            f"{parent_dir_name}_Farneback_flow_map_overlay_{img_count}.jpg",
         ),
         flow_map_overlay,
     )
@@ -150,5 +172,4 @@ if __name__ == "__main__":
         if "results" in dir_name:
             continue
         results_directory = os.path.join(results_base_directory, dir_name)
-        # calculate_lucas_kanade_optical_flow(full_path, results_directory, dir_name)
         calculate_optical_flow(full_path, results_directory, dir_name)
