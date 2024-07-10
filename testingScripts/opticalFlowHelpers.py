@@ -2,9 +2,10 @@ import numpy as np
 import cv2
 import math
 import os
-from multiprocessing import Pool, cpu_count
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from scipy.spatial.distance import cdist
+
+# from scipy.spatial.distance import cdist
+from exiftool import ExifToolHelper
 
 ########### Constants ############
 HORIZONTAL_FOV = 142  # degrees
@@ -20,8 +21,27 @@ HORIZONTAL_30_DEGREES = math.ceil(30 / HORIZONTAL_FOV_DEGREE_PER_PIXEL)
 ########### Tuneable Values ############
 MAGNITUDE_THRESHOLD = 2.5
 MAGNITUDE_BORDER_TRIMMING = 10
+LINES_STEP_SIZE = 16
+GRID_SIZE = 16
+NUMBER_OF_TOP_SECTIONS = 3
 
-
+########### EXIF Tags ############
+TAGS_TO_KEEP = [
+    "EXIF:DateTimeOriginal",
+    "EXIF:Orientation",
+    "EXIF:FocalLength",
+    "EXIF:SubSecTimeOriginal",
+    "EXIF:GPSVersionID",
+    "EXIF:GPSLatitudeRef",
+    "EXIF:GPSLatitude",
+    "EXIF:GPSLongitudeRef",
+    "EXIF:GPSLongitude",
+    "EXIF:GPSAltitudeRef",
+    "EXIF:GPSAltitude",
+    "EXIF:GPSDOP",
+    "XMP:XMPToolkit",
+    "XMP:Lens",
+]
 ########### Math Functions ############
 
 
@@ -591,6 +611,63 @@ def get_horizontal_range_of_top_sections(top_sections, grid_size):
     return int(min_x), int(max_x), int(weighted_average_x)
 
 
+def undistort_via_exif(
+    img_path,
+    out_path,
+    verbose=False,
+):
+    if verbose:
+        print(f"Undistorting {img_path}...")
+
+    f = 0.0
+    k1 = 0.0
+    k2 = 0.0
+    k3 = 0.0
+    k4 = 0.0
+    tags = {}
+
+    with ExifToolHelper() as et:
+        tags = et.get_tags(img_path, [])[0]
+        # print(tags)
+        f = float(tags.get("EXIF:FocalLength"))
+        k1, k2 = [float(x) for x in tags.get("XMP:Lens").split(" ")]
+
+    img = cv2.imread(img_path)
+    h, w = img.shape[:2]
+
+    mtx = np.array(
+        [
+            [f, 0.0, w / 2.0],
+            [0.0, f, h / 2.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+
+    dist = np.array([k1, k2, k3, k4], np.float64)
+
+    newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (w, h), 1, (w, h))
+
+    R = np.eye(3, dtype=np.float64)
+
+    mapx, mapy = cv2.initUndistortRectifyMap(
+        mtx, dist, R, newcameramtx, (w, h), cv2.CV_32FC1
+    )
+    dst = cv2.remap(img, mapx, mapy, interpolation=cv2.INTER_LINEAR)
+
+    if verbose:
+        print(f"Writing {out_path}...")
+    cv2.imwrite(out_path, dst)
+
+    with ExifToolHelper() as et:
+        tags = {k: tags[k] for k in TAGS_TO_KEEP if k in tags}
+        if verbose:
+            print(f"Encoding exif tags from {img_path} to {out_path}...")
+        et.set_tags([out_path], tags=tags, params=["-overwrite_original"])
+
+    return True
+
+
 ########### Drawing Functions ############
 def draw_dotted_line(image, start_point, end_point, color, thickness, gap):
     x1, y1 = start_point
@@ -679,3 +756,108 @@ def draw_angle_map(angle, image):
         )
 
     return angle_map
+
+
+def create_output_images(
+    last_image_path,
+    top_sections,
+    grid,
+    offset_pixels,
+    parent_dir_name,
+    results_directory,
+    img_count,
+    img_h,
+    img_w,
+):
+    # Read a sample image for overlay
+    sample_image = cv2.imread(last_image_path)
+    # intersection_img = np.zeros((h, w, 3), dtype=np.uint8)
+    overlay_top_sections = np.zeros_like(sample_image)
+    # for point in intersection_points:
+    #     cv2.line(
+    #         intersection_img,
+    #         (int(point[0]), int(point[1])),
+    #         (int(point[0]), int(point[1])),
+    #         (255, 0, 0),
+    #         1,
+    #     )
+
+    # Highlight the top sections on the overlay image
+    for y_idx, x_idx, _ in top_sections:
+        cv2.rectangle(
+            overlay_top_sections,
+            (x_idx * GRID_SIZE, y_idx * GRID_SIZE),
+            ((x_idx + 1) * GRID_SIZE, (y_idx + 1) * GRID_SIZE),
+            (0, 255, 0),
+            2,
+        )
+    # draw line at offset found
+    cv2.line(
+        overlay_top_sections, (offset_pixels, 0), (offset_pixels, img_h), (0, 0, 255), 2
+    )
+
+    # Create a heatmap from the grid
+    heatmap = np.uint8(255 * grid / np.max(grid))
+    heatmap = cv2.resize(heatmap, (img_w, img_h), interpolation=cv2.INTER_NEAREST)
+    colored_heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
+
+    ### Draw Veritical and Horizontal Center Lines
+    # intersection_img_resized = draw_vertical_center_line(intersection_img)
+    sample_image_resized = draw_vertical_center_line(sample_image)
+    # intersection_img_resized = draw_horizontal_center_line(intersection_img_resized)
+    sample_image_resized = draw_horizontal_center_line(sample_image_resized)
+
+    ### Overlays
+    # flow_map_overlay = draw_overlay_flow_map(average_flow, sample_image_resized)
+    # # angle_map = draw_angle_map(angle, sample_image_resized)
+    # overlay_intersection_img = cv2.addWeighted(
+    #     sample_image_resized, 0.5, intersection_img_resized, 0.5, 0
+    # )
+    overlay_density_img = cv2.addWeighted(
+        sample_image_resized, 0.5, colored_heatmap, 0.5, 0
+    )
+    overlay_top_sections_img = cv2.addWeighted(
+        sample_image_resized, 0.7, overlay_top_sections, 0.3, 0
+    )
+
+    # Save the images to the results directory with the parent directory name in the filenames
+    os.makedirs(results_directory, exist_ok=True)
+    # cv2.imwrite(
+    #     os.path.join(
+    #         results_directory,
+    #         f"{parent_dir_name}_Farneback_intersection_{img_count}.jpg",
+    #     ),
+    #     intersection_img,
+    # )
+    # cv2.imwrite(
+    #     os.path.join(
+    #         results_directory,
+    #         f"{parent_dir_name}_Farneback_overlay_intersection_{img_count}.jpg",
+    #     ),
+    #     overlay_intersection_img,
+    # )
+    cv2.imwrite(
+        os.path.join(
+            results_directory,
+            f"{parent_dir_name}_Farneback_intersection_density_{img_count}.jpg",
+        ),
+        overlay_density_img,
+    )
+    cv2.imwrite(
+        os.path.join(
+            results_directory,
+            f"{parent_dir_name}_Farneback_top_sections_{img_count}.jpg",
+        ),
+        overlay_top_sections_img,
+    )
+    # cv2.imwrite(
+    #     os.path.join(
+    #         results_directory,
+    #         f"{parent_dir_name}_Farneback_flow_map_overlay_{img_count}.jpg",
+    #     ),
+    #     flow_map_overlay,
+    # )
+    # cv2.imwrite(
+    #     os.path.join(results_directory, f"{parent_dir_name}_Farneback_angle_map.jpg"),
+    #     angle_map,
+    # )
