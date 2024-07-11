@@ -611,17 +611,124 @@ def get_horizontal_range_of_top_sections(top_sections, grid_size):
     return int(min_x), int(max_x), int(weighted_average_x)
 
 
-def undistort_via_exif(
-    img_path,
-    out_path,
-    verbose=False,
-):
+# def undistort_via_exif(
+#     img_path,
+#     out_path,
+#     verbose=False,
+# ):
+#     if verbose:
+#         print(f"Undistorting {img_path}...")
+
+#     f = 0.38881226081775405
+#     k1 = 0.07400131148366665
+#     k2 = -0.011862812179414109
+#     k3 = 0.0
+#     k4 = 0.0
+#     tags = {}
+
+#     with ExifToolHelper() as et:
+#         tags = et.get_tags(img_path, [])[0]
+#         # print(tags)
+
+#     img = cv2.imread(img_path)
+#     h, w = img.shape[:2]
+
+#     mtx = np.array(
+#         [
+#             [f, 0.0, w / 2.0],
+#             [0.0, f, h / 2.0],
+#             [0.0, 0.0, 1.0],
+#         ],
+#         dtype=np.float64,
+#     )
+
+#     dist = np.array([k1, k2, k3, k4], np.float64)
+
+#     newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (w, h), 1, (w, h))
+
+#     R = np.eye(3, dtype=np.float64)
+
+#     mapx, mapy = cv2.initUndistortRectifyMap(
+#         mtx, dist, R, newcameramtx, (w, h), cv2.CV_32FC1
+#     )
+#     dst = cv2.remap(img, mapx, mapy, interpolation=cv2.INTER_LINEAR)
+
+#     if verbose:
+#         print(f"Writing {out_path}...")
+#     cv2.imwrite(out_path, dst)
+
+#     with ExifToolHelper() as et:
+#         tags = {k: tags[k] for k in TAGS_TO_KEEP if k in tags}
+#         if verbose:
+#             print(f"Encoding exif tags from {img_path} to {out_path}...")
+#         et.set_tags([out_path], tags=tags, params=["-overwrite_original"])
+
+#     return True
+
+
+# def undistort_via_exif(img_path, out_path, verbose=False):
+#     if verbose:
+#         print(f"Undistorting {img_path}...")
+
+#     # Example intrinsic parameters, these should be calibrated for your camera
+#     f = 0.38881226081775405
+#     k1 = 0.07400131148366665
+#     k2 = -0.011862812179414109
+#     k3 = 0.0
+#     k4 = 0.0
+#     tags = {}
+
+#     with ExifToolHelper() as et:
+#         tags = et.get_tags(img_path, [])[0]
+#         # print(tags)
+
+#     img = cv2.imread(img_path)
+#     h, w = img.shape[:2]
+
+#     # Camera matrix
+#     mtx = np.array(
+#         [
+#             [f * w, 0.0, w / 2.0],
+#             [0.0, f * h, h / 2.0],
+#             [0.0, 0.0, 1.0],
+#         ],
+#         dtype=np.float64,
+#     )
+
+#     # Distortion coefficients
+#     dist = np.array([k1, k2, k3, k4], np.float64)
+
+#     # New camera matrix
+#     newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (w, h), 1, (w, h))
+
+#     # Undistort
+#     dst = cv2.undistort(img, mtx, dist, None, newcameramtx)
+
+#     # Crop the image based on the roi
+#     x, y, w, h = roi
+#     dst = dst[y : y + h, x : x + w]
+
+#     if verbose:
+#         print(f"Writing {out_path}...")
+#     cv2.imwrite(out_path, dst)
+
+#     with ExifToolHelper() as et:
+#         tags = {k: tags[k] for k in TAGS_TO_KEEP if k in tags}
+#         if verbose:
+#             print(f"Encoding exif tags from {img_path} to {out_path}...")
+#         et.set_tags([out_path], tags=tags, params=["-overwrite_original"])
+
+#     return True
+
+
+def undistort_via_exif(img_path, out_path, verbose=False):
     if verbose:
         print(f"Undistorting {img_path}...")
 
-    f = 0.0
-    k1 = 0.0
-    k2 = 0.0
+    # Example intrinsic parameters, these should be calibrated for your camera
+    f = 0.38881226081775405
+    k1 = 0.07400131148366665
+    k2 = -0.011862812179414109
     k3 = 0.0
     k4 = 0.0
     tags = {}
@@ -629,31 +736,38 @@ def undistort_via_exif(
     with ExifToolHelper() as et:
         tags = et.get_tags(img_path, [])[0]
         # print(tags)
-        f = float(tags.get("EXIF:FocalLength"))
-        k1, k2 = [float(x) for x in tags.get("XMP:Lens").split(" ")]
 
     img = cv2.imread(img_path)
     h, w = img.shape[:2]
 
+    # Camera matrix
     mtx = np.array(
         [
-            [f, 0.0, w / 2.0],
-            [0.0, f, h / 2.0],
+            [f * w, 0.0, w / 2.0],
+            [0.0, f * h, h / 2.0],
             [0.0, 0.0, 1.0],
         ],
         dtype=np.float64,
     )
 
+    # Distortion coefficients
     dist = np.array([k1, k2, k3, k4], np.float64)
 
+    # New camera matrix
     newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (w, h), 1, (w, h))
 
+    # Rectification matrix
     R = np.eye(3, dtype=np.float64)
 
+    # Map for undistortion
     mapx, mapy = cv2.initUndistortRectifyMap(
         mtx, dist, R, newcameramtx, (w, h), cv2.CV_32FC1
     )
     dst = cv2.remap(img, mapx, mapy, interpolation=cv2.INTER_LINEAR)
+
+    # Crop the image based on the roi
+    x, y, w, h = roi
+    dst = dst[y : y + h, x : x + w]
 
     if verbose:
         print(f"Writing {out_path}...")
