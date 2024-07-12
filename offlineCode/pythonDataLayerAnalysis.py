@@ -7,7 +7,7 @@ sys.path.insert(
     0, "/Users/rogerberman/hivemapper/sensor-fusion"
 )  # Add the project root to the Python path
 from fusion import SqliteInterface, aggregate_data, convertTimeToEpoch
-from plottingCode import (
+from offlineCode.utils.plottingCode import (
     plot_signal_over_time,
     plot_signals_over_time,
     create_map_with_highlighted_indexes,
@@ -16,7 +16,10 @@ from plottingCode import (
     plot_sensor_data_classified,
     plot_lat_lon_with_highlights,
 )
-from processDBs import validate_db_file, process_db_file_for_individual_drives
+from offlineCode.utils.processDBs import (
+    validate_db_file,
+    process_db_file_for_individual_drives,
+)
 
 
 def transform_list_of_dicts(list_of_dicts):
