@@ -1,12 +1,8 @@
 import os
 from multiprocessing import Process, Queue
-import sys
 
-sys.path.insert(
-    0, "/Users/rogerberman/hivemapper/sensor-fusion"
-)  # Add the project root to the Python path
 import numpy as np
-from fusion import (
+from sensor_fusion.fusion import (
     SqliteInterface,
     extractAndSmoothImuData,
     extractAndSmoothMagData,

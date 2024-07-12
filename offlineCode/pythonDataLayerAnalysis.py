@@ -1,13 +1,9 @@
 import time
-import sys
 import matplotlib.pyplot as plt
 import numpy as np
 
-sys.path.insert(
-    0, "/Users/rogerberman/hivemapper/sensor-fusion"
-)  # Add the project root to the Python path
-from fusion import SqliteInterface, aggregate_data, convertTimeToEpoch
-from offlineCode.utils.plottingCode import (
+from sensor_fusion.fusion import SqliteInterface, aggregate_data, convertTimeToEpoch
+from sensor_fusion.offlineCode.utils.plottingCode import (
     plot_signal_over_time,
     plot_signals_over_time,
     create_map_with_highlighted_indexes,
@@ -16,7 +12,7 @@ from offlineCode.utils.plottingCode import (
     plot_sensor_data_classified,
     plot_lat_lon_with_highlights,
 )
-from offlineCode.utils.processDBs import (
+from sensor_fusion.offlineCode.utils.processDBs import (
     validate_db_file,
     process_db_file_for_individual_drives,
 )

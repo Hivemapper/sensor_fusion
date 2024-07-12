@@ -1,6 +1,9 @@
 import os
 import sys
-from processDBs import validate_dbs, process_db_file_for_individual_drives
+from offlineCode.utils.processDBs import (
+    validate_dbs,
+    process_db_file_for_individual_drives,
+)
 
 sys.path.insert(
     0, "/Users/rogerberman/hivemapper/sensor-fusion"
@@ -22,7 +25,7 @@ from fusion import (
     GNSS_HEADING_ACCURACY_THRESHOLD,
     ASC,
 )
-from testingScripts.plottingCode import (
+from offlineCode.utils.plottingCode import (
     plot_signal_over_time,
     plot_signals_over_time,
     plot_rate_counts,
