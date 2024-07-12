@@ -6,13 +6,9 @@ import os
 
 from sensor_fusion.fusion import SqliteInterface, convertTimeToEpoch
 from sensor_fusion.offlineCode.utils.plottingCode import (
-    plot_signal_over_time,
     plot_signals_over_time,
-    create_map_with_highlighted_indexes,
-    plot_rate_counts,
     plot_sensor_data,
-    plot_sensor_data_classified,
-    plot_lat_lon_with_highlights,
+    plot_sensor_timestamps,
 )
 from sensor_fusion.offlineCode.utils.processDBs import (
     validate_db_file,
@@ -119,8 +115,12 @@ if __name__ == "__main__":
                 title="Processed GYRO Data",
                 downsample_factor=10,
             )
-            ### TODO: Add plots comparing gnss, raw imu, and processed imu in regards to time
-            # plot where/when we have data for each in time
+            sensor_data = {
+                "gnss": gnss_data["system_time"],
+                "raw_imu": raw_imu["time"],
+                "processed_imu": processed_imu["time"],
+            }
+            plot_sensor_timestamps(sensor_data)
 
             plt.show()
 

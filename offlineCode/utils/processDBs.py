@@ -5,7 +5,7 @@ from sensor_fusion.fusion import (
     SqliteInterface,
 )
 
-SESSION_DATA_MINIMUM = 8 * 60 * 5  # 5 minutes of data at 8 Hz
+SESSION_DATA_MINIMUM = 500  # number of points
 
 
 def validate_db_file(file_path):
