@@ -44,32 +44,6 @@ def convertEpochToTime(epoch_ms):
     return datetime_obj.strftime("%Y-%m-%d %H:%M:%S.%f")
 
 
-def aggregate_data(data_list):
-    """
-    Aggregates data from a list of IMUData or ProcessedIMUData objects into a dictionary.
-    Args:
-        data_list (list): A list of IMUData or ProcessedIMUData objects.
-    Returns:
-        dict: A dictionary with keys as attribute names and values as lists of attribute values.
-    """
-    if not data_list:
-        return {}
-
-    result = {}
-    first_item = data_list[0]
-
-    # Initialize dictionary keys with empty lists
-    for key in first_item.__dict__.keys():
-        result[key] = []
-
-    # Populate the dictionary with values from each object
-    for item in data_list:
-        for key, value in item.__dict__.items():
-            result[key].append(value)
-
-    return result
-
-
 class IMUData:
     def __init__(self, ax, ay, az, gx, gy, gz, time, temperature, session):
         self.ax = ax
