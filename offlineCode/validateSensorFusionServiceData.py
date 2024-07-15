@@ -28,11 +28,7 @@ def check_table_copy(raw_data, processed_data):
     return True
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Process a local path.")
-    parser.add_argument("path", type=str, help="The local path to process")
-    args = parser.parse_args()
-    file_path = args.path
+def main(file_path):
     # Check if the path exists
     if os.path.exists(file_path):
         print(f"The path {file_path} exists.")
@@ -126,3 +122,25 @@ if __name__ == "__main__":
 
     except Exception as e:
         print(f"Error: {e}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Process a local path.")
+    parser.add_argument("path", type=str, help="The local path to process")
+    args = parser.parse_args()
+    file_path = args.path
+    # Check if the path exists
+    for user in os.listdir(file_path):
+        if ".DS_Store" in user:
+            continue
+        # print(f"Processing {user}")
+        user_path = os.path.join(file_path, user)
+        for possible_dir in os.listdir(user_path):
+            possible_dir_path = os.path.join(user_path, possible_dir)
+            if possible_dir == "recovered" and os.path.isdir(possible_dir_path):
+                # print(f"Processing {possible_dir_path}")
+                for recovered_file in os.listdir(possible_dir_path):
+                    db_file_path = os.path.join(possible_dir_path, recovered_file)
+                    if recovered_file.endswith(".db"):
+                        print(f"Processing {db_file_path}")
+                        main(db_file_path)

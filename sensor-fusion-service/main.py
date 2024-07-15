@@ -2,11 +2,20 @@ import time
 import argparse
 from datetime import datetime
 from typing import List
+import math
 # import matplotlib.pyplot as plt
 
 from conversions import lists_to_dicts
 from telemetryMath import extractAndSmoothImuData, extractGNSSData, calculateStationary
-from sqliteInterface import SqliteInterface, IMUData, DATA_LOGGER_PATH
+from sqliteInterface import (
+    SqliteInterface,
+    IMUData,
+    DATA_LOGGER_PATH,
+    IMU_RAW_TABLE,
+    IMU_PROCESSED_TABLE,
+    SENSOR_FUSION_ERROR_LOG_TABLE,
+    SENSOR_FUSION_PURGE_LIMIT,
+)
 # from plottingCode import plot_signals_over_time, plot_sensor_data, plot_signal_over_time
 
 IMU_SET_FREQUENCY = 100.0  # Hz
@@ -97,28 +106,35 @@ def processIMUData(data: List[IMUData], debug: bool = False):
 def main(dbPath: str, debug: bool = False):
     # Setup
     db = SqliteInterface(dbPath)
-    # Setup Logging Table
-    if not db.check_table_exists("python_layer_error_logs"):
+    # Setup Error Logging Table
+    if not db.check_table_exists(SENSOR_FUSION_ERROR_LOG_TABLE):
         db.create_error_log_table()
     # Remove the processed table if it exists to start fresh for debugging
     if debug:
         print("Debugging Mode")
-        db.drop_table("imu_processed")
+        db.drop_table(IMU_PROCESSED_TABLE)
 
     # These indexes are used to track diff between raw and processed tables
     # They will track row ids from the raw table
     rawCurTableIndex = -1
     processedCurTableIndex = -1
     # Setup Processed Data Table
-    if not db.check_table_exists("imu_processed"):
+    if not db.check_table_exists(IMU_PROCESSED_TABLE):
         db.create_processed_imu_table()
-        processedCurTableIndex = db.find_starting_row_id("imu")
+        processedCurTableIndex = db.find_starting_row_id(IMU_RAW_TABLE)
     else:
-        processedCurTableIndex = db.find_most_recent_row_id("imu_processed")
+        processedCurTableIndex = db.find_most_recent_row_id(IMU_PROCESSED_TABLE)
 
     # infinite loop to process data as it comes in
     while 1:
-        rawCurTableIndex = db.find_most_recent_row_id("imu")
+        # Check if imu_processed table needs to be purged
+        if db.get_row_count(IMU_PROCESSED_TABLE) > SENSOR_FUSION_PURGE_LIMIT:
+            db.purge_recent_rows(
+                IMU_PROCESSED_TABLE, math.ceil(SENSOR_FUSION_PURGE_LIMIT / 2.0)
+            )
+            db.vacuum()
+
+        rawCurTableIndex = db.find_most_recent_row_id(IMU_RAW_TABLE)
         # Failed to get the current index, likely due to db being busy
         if rawCurTableIndex == None:
             time.sleep(LOOP_SLEEP_TIME)
@@ -127,6 +143,7 @@ def main(dbPath: str, debug: bool = False):
         if debug:
             print("Raw Table Index: ", rawCurTableIndex)
             print("Processed Table Index: ", processedCurTableIndex)
+
         index_window_size = rawCurTableIndex - processedCurTableIndex
 
         if index_window_size >= MIN_DATA_POINTS:
@@ -138,6 +155,11 @@ def main(dbPath: str, debug: bool = False):
                 rawData = db.get_raw_imu_by_row_range(
                     processedCurTableIndex, furthest_index
                 )
+                ## If there is no data to process, skip the processing step, increment the processedCurTableIndex, and continue
+                if len(rawData) == 0:
+                    print("No data to process")
+                    processedCurTableIndex = furthest_index + 1
+                    continue
             except Exception as e:
                 db.log_error("Retrieving IMU Data", str(e))
                 continue
