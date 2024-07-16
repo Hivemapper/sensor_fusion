@@ -1,12 +1,36 @@
 import sqlite3
-from conversions import convertTimeToEpoch, convertEpochToTime
+import os
+import math
 import time
 from functools import wraps
+from enum import Enum
 
 # For SQLite interface
 DATA_LOGGER_PATH = "/data/recording/data-logger.v1.4.5.db"
 DESC = "DESC"
 ASC = "ASC"
+
+
+class TableName(Enum):
+    GNSS_TABLE = "gnss"
+    GNSS_AUTH_TABLE = "gnss_auth"
+    IMU_RAW_TABLE = "imu"
+    IMU_PROCESSED_TABLE = "imu_processed"
+    MAG_TABLE = "magnetometer"
+    SENSOR_FUSION_ERROR_LOG_TABLE = "sensor_fusion_error_logs"
+
+
+# Tables in Purge Group
+PURGE_GROUP = {
+    TableName.GNSS_TABLE,
+    TableName.GNSS_AUTH_TABLE,
+    TableName.IMU_RAW_TABLE,
+    TableName.IMU_PROCESSED_TABLE,
+    TableName.MAG_TABLE,
+}
+
+# Purging Constants
+DB_SIZE_LIMIT = 1024 * 1024 * 200  # 200 MB
 
 
 class IMUData:
@@ -103,6 +127,16 @@ class SqliteInterface:
         self.connection = sqlite3.connect(data_logger_path)
         self.cursor = self.connection.cursor()
 
+    def get_db_size(self) -> int:
+        """
+        Returns the size of the SQLite database file in bytes.
+        """
+        try:
+            return os.path.getsize(self.data_logger_path)
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            return -1
+
     @retry()
     def create_processed_imu_table(self):
         """
@@ -110,7 +144,7 @@ class SqliteInterface:
         """
         try:
             # SQL command to create the imu table if it doesn't already exist
-            create_imu_table_sql = """
+            create_imu_table_sql = f"""
             CREATE TABLE IF NOT EXISTS imu_processed (
                         id INTEGER NOT NULL PRIMARY KEY,
                         row_id INTEGER NOT NULL,
@@ -138,14 +172,14 @@ class SqliteInterface:
             self.connection.rollback()
 
     @retry()
-    def create_error_log_table(self):
+    def create_service_log_table(self):
         """
         Creates the error log table in the database if it does not already exist.
         """
         try:
             # SQL command to create the error log table if it doesn't already exist
             create_error_log_table_sql = """
-            CREATE TABLE IF NOT EXISTS python_layer_error_logs (
+            CREATE TABLE IF NOT EXISTS sensor_fusion_logs (
                         id INTEGER NOT NULL PRIMARY KEY,
                         system_time TIMESTAMP NOT NULL,
                         error_type TEXT NOT NULL,
@@ -161,6 +195,22 @@ class SqliteInterface:
         except sqlite3.Error as e:
             # Handle any SQLite errors
             print(f"An error occurred while creating the error log table: {e}")
+            self.connection.rollback()
+
+    @retry()
+    def service_log_msg(self, msg: str, error: str):
+        """
+        Writes a message to the service log table in the database.
+        Args:
+            service (str): The name of the service that encountered the error.
+            error (str): The error message.
+        """
+        try:
+            query = "INSERT INTO sensor_fusion_logs (system_time, error_type, error_message) VALUES (?, ?, ?);"
+            self.cursor.execute(query, (time.time(), msg, error))
+            self.connection.commit()
+        except sqlite3.Error as e:
+            print(f"An error occurred while writing to the error table: {e}")
             self.connection.rollback()
 
     @retry()
@@ -443,168 +493,283 @@ class SqliteInterface:
         return nearest_row_id[0] if nearest_row_id else None
 
     @retry()
-    def queryAllImu(self, order: str = "ASC"):
+    def get_row_count(self, table_name: str) -> int:
         """
-        Queries the whole IMU table for accelerometer and gyroscope data and sorts by row ID.
-        Columns queried acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, time
-        Args:
-            order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'DESC'.
+        Gets the number of rows in the specified table.
+
+        Parameters:
+            table_name (str): The name of the table to count rows from.
+
         Returns:
-            list: A list of IMUData objects containing the accelerometer and gyroscope data.
-        """
-        query = f"""
-                    SELECT acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, time, temperature, session
-                    FROM imu 
-                    ORDER BY id {order}
-                """
-        rows = self.cursor.execute(query).fetchall()
-        results = [
-            IMUData(
-                row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]
-            )
-            for row in rows
-        ]
-        return results
-
-    @retry()
-    def queryAllMagnetometer(self, order: str = "ASC"):
-        """
-        Queries the magnetometer table for magnetometer data and sorts by row ID.
-        Columns queried mag_x, mag_y, mag_z, system_time
-        Args:
-            order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'DESC'.
-        Returns:
-            list: A list of MagnetometerData objects containing the magnetometer data.
-        """
-        query = f"""
-                    SELECT mag_x, mag_y, mag_z, system_time, session
-                    FROM magnetometer
-                    ORDER BY id {order}
-                """
-        rows = self.cursor.execute(query).fetchall()
-        results = [MagData(row[0], row[1], row[2], row[3], row[4]) for row in rows]
-        return results
-
-    @retry()
-    def queryAllGnss(self, order: str = "ASC"):
-        """
-        Queries the GNSS table for all GNSS data and sorts by row ID.
-        Columns queried latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, system_time, time, time_resolved, session
-        Args:
-            order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'DESC'.
-        Returns:
-            list: A list of GNSSData objects containing the GNSS data.
-        """
-        query = f"""
-                    SELECT latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, system_time, time, time_resolved, session
-                    FROM gnss 
-                    ORDER BY id {order}
-                """
-        results = self.cursor.execute(query).fetchall()
-        results = [
-            GNSSData(
-                row[0],
-                row[1],
-                row[2],
-                row[3],
-                row[4],
-                row[5],
-                row[6],
-                row[7],
-                row[8],
-                row[9],
-                row[10],
-                row[11],
-            )
-            for row in results
-        ]
-        return results
-
-    @retry()
-    def get_min_max_system_time(self, tableName):
-        """
-        Queries the specified table to retrieve the smallest and largest values of the system_time column.
-        Args:
-            tableName (str): The name of the table to query.
-        Returns:
-            Tuple[datetime, datetime]: A tuple containing the smallest and largest system_time values.
-        """
-        timeVariable = "system_time"
-        if tableName == "imu":
-            timeVariable = "time"
-
-        # Get the minimum row id
-        min_row_id = self.get_min_row_id(tableName)
-
-        # Query to retrieve the smallest system_time value corresponding to the minimum row id
-        min_query = f"SELECT {timeVariable} FROM {tableName} WHERE id = {min_row_id}"
-        min_result = self.cursor.execute(min_query).fetchone()
-        min_system_time = min_result[0] if min_result else None
-
-        # Query to retrieve the largest system_time value
-        max_query = f"SELECT MAX({timeVariable}) FROM {tableName}"
-        max_result = self.cursor.execute(max_query).fetchone()
-        max_system_time = max_result[0] if max_result else None
-
-        return min_system_time, max_system_time
-
-    @retry()
-    def log_error(self, error_type: str, error: str):
-        """
-        Writes an error message to the error table in the database.
-        Args:
-            service (str): The name of the service that encountered the error.
-            error (str): The error message.
+            int: The number of rows in the table.
         """
         try:
-            query = "INSERT INTO python_layer_error_logs (system_time, error_type, error_message) VALUES (?, ?, ?);"
-            self.cursor.execute(query, (time.time(), error_type, error))
-            self.connection.commit()
+            # Ensure the table name is a valid identifier (this is a simple check; you may want more thorough validation)
+            if not table_name.isidentifier():
+                raise ValueError("Invalid table name")
+
+            # SQL command to count the rows in the table
+            count_rows_sql = f"SELECT COUNT(*) FROM {table_name}"
+
+            # Execute the SQL command to count the rows
+            self.cursor.execute(count_rows_sql)
+
+            # Fetch the result and return the count
+            row_count = self.cursor.fetchone()[0]
+            return row_count
+
         except sqlite3.Error as e:
-            print(f"An error occurred while writing to the error table: {e}")
+            # Handle any SQLite errors
+            print(f"An error occurred while counting the rows: {e}")
+            return -1
+
+    @retry()
+    def count_rows_by_value(self, table_name: str, column_name: str, value) -> int:
+        """
+        Counts the number of rows in the specified table where the specified column contains the given value.
+
+        Parameters:
+            table_name (str): The name of the table to count rows from.
+            column_name (str): The name of the column to check the value.
+            value: The value to match for counting rows.
+
+        Returns:
+            int: The number of rows in the table that satisfy the condition.
+        """
+        try:
+            # Ensure the table and column names are valid identifiers (simple check; you may want more thorough validation)
+            if not table_name.isidentifier() or not column_name.isidentifier():
+                raise ValueError("Invalid table or column name")
+
+            # SQL command to count the rows in the table where the column contains the specified value
+            count_rows_sql = (
+                f"SELECT COUNT(*) FROM {table_name} WHERE {column_name} = ?"
+            )
+
+            # Execute the SQL command to count the rows
+            self.cursor.execute(count_rows_sql, (value,))
+
+            # Fetch the result and return the count
+            row_count = self.cursor.fetchone()[0]
+            return row_count
+
+        except (sqlite3.Error, ValueError) as e:
+            # Handle any SQLite or validation errors
+            print(f"An error occurred while counting the rows: {e}")
+            return -1
+
+    @retry()
+    def purge_oldest_rows(self, table_name: str, num_rows: int):
+        """
+        Purges the oldest num_rows rows from the specified table.
+
+        Parameters:
+            table_name (str): The name of the table to purge rows from.
+            num_rows (int): The number of oldest rows to delete from the table.
+        """
+        try:
+            # Validate the table and column names to avoid SQL injection
+            if not table_name.isidentifier():
+                raise ValueError("Invalid table or column name")
+
+            # SQL command to delete the oldest num_rows rows
+            delete_rows_sql = f"""
+            DELETE FROM {table_name}
+            WHERE rowid IN (
+                SELECT rowid
+                FROM {table_name}
+                ORDER BY rowid ASC
+                LIMIT ?
+            );
+            """
+            # Execute the SQL command to delete the rows with parameterized query
+            self.cursor.execute(delete_rows_sql, (num_rows,))
+
+            # Commit the changes to the database
+            self.connection.commit()
+            print(
+                f"Successfully deleted the oldest {num_rows} rows from the {table_name} table."
+            )
+
+        except sqlite3.Error as e:
+            # Handle any SQLite errors
+            print(f"An error occurred while deleting the rows: {e}")
             self.connection.rollback()
 
-    ##### Functions below are a bit outdated as of now but can be used for reference #####
+    def purge_rows_by_value(self, table_name: str, column_name: str, value) -> None:
+        """
+        Purges all rows where the specified column contains the given value.
 
-    # def get_rows_between_ids(self, tableName, startRowId, endRowId, order='ASC'):
-    #     """
-    #     Queries the specified table to retrieve all rows between the given start and end row IDs, including those two IDs.
-    #     Args:
-    #         tableName (str): The name of the table to query.
-    #         startRowId (int): The starting row ID.
-    #         endRowId (int): The ending row ID.
-    #         order (str): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'ASC'.
-    #     Returns:
-    #         list: A list of rows between the start and end row IDs, including those two IDs.
-    #     """
-    #     # desired columns for each table
-    #     columns = '*'
-    #     if tableName == 'imu':
-    #         columns = 'acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, time'
-    #     elif tableName == 'magnetometer':
-    #         columns = 'mag_x, mag_y, mag_z, system_time'
-    #     elif tableName == 'gnss':
-    #         columns = 'latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, system_time'
+        :param table_name: Name of the table.
+        :param column_name: Name of the column to check the value.
+        :param value: The value to match for purging rows.
+        """
+        try:
+            # Validate the table and column names to avoid SQL injection
+            if not table_name.isidentifier() or not column_name.isidentifier():
+                raise ValueError("Invalid table or column name")
 
-    #     query = f"""
-    #             SELECT {columns} FROM {tableName}
-    #             WHERE id <= {endRowId} AND id >= {startRowId}
-    #             ORDER BY id {order}
-    #         """
+            # SQL command to delete rows where the column contains the specified value
+            purge_rows_sql = f"""
+            DELETE FROM {table_name}
+            WHERE {column_name} = ?;
+            """
+            # Execute the SQL command to delete the rows
+            self.cursor.execute(purge_rows_sql, (value,))
 
-    #     # Execute the query and fetch the results
-    #     rows = self.cursor.execute(query).fetchall()
-    #     return rows
+            # Commit the changes to the database
+            self.connection.commit()
+            print(
+                f"Successfully deleted rows from the {table_name} table where {column_name} = {value}."
+            )
 
-    # def get_max_row_id(self, tableName):
-    #     """
-    #     Queries the specified table to retrieve the maximum row id.
-    #     Args:
-    #         tableName (str): The name of the table to query.
-    #     Returns:
-    #         int: The maximum row id of the table.
-    #     """
-    #     # Query to retrieve the maximum row id
-    #     query = f"SELECT MAX(id) FROM {tableName}"
-    #     max_row_id = self.cursor.execute(query).fetchone()
-    #     return max_row_id[0] if max_row_id else None
+        except (sqlite3.Error, ValueError) as e:
+            # Handle any SQLite or validation errors
+            print(f"An error occurred while deleting the rows: {e}")
+            self.connection.rollback()
+
+    @retry()
+    def get_unique_values_ordered(
+        self, table_name: str, column_name: str, order_by: str
+    ) -> list:
+        """
+        Gets all unique values in a column and orders them by the specified column.
+
+        :param table_name: Name of the table.
+        :param column_name: Name of the column to get unique values from.
+        :param order_by: Name of the column to order by.
+        :return: List of unique values ordered by the specified column.
+        """
+        try:
+            # Validate the table and column names to avoid SQL injection
+            if (
+                not table_name.isidentifier()
+                or not column_name.isidentifier()
+                or not order_by.isidentifier()
+            ):
+                raise ValueError("Invalid table or column name")
+
+            # SQL command to select unique values from the specified column and order by the order_by column
+            get_unique_values_ordered_sql = f"""
+            SELECT DISTINCT {column_name}
+            FROM {table_name}
+            ORDER BY {order_by} ASC;
+            """
+            # Execute the SQL command
+            self.cursor.execute(get_unique_values_ordered_sql)
+            results = self.cursor.fetchall()
+
+            # Extract the unique values from the results
+            unique_values = [row[0] for row in results]
+
+            return unique_values
+
+        except (sqlite3.Error, ValueError) as e:
+            # Handle any SQLite or validation errors
+            print(f"An error occurred while retrieving unique values: {e}")
+            return []
+
+    @retry()
+    def purge(self):
+        # Check if DB is over the limit return if it is not
+        try:
+            if self.get_db_size() < DB_SIZE_LIMIT:
+                return True
+
+            # sessions here are oldest to newest, important to keep this in mind
+            sessionsCount = {}
+            tableRowCounts = {}
+            for table in PURGE_GROUP:
+                curTableSessions = self.get_unique_values_ordered(
+                    table, "session", "id"
+                )
+                tableRowCounts[table] = self.get_row_count(table)
+                for session in curTableSessions:
+                    if session not in sessionsCount:
+                        sessionsCount[session] = 1
+                    else:
+                        sessionsCount[session] += 1
+
+            # If there is only one session, then we can purge the oldest rows
+            if len(sessionsCount) == 1:
+                for table in PURGE_GROUP:
+                    self.purge_oldest_rows(
+                        table, math.ceil(tableRowCounts[table] / 2.0)
+                    )
+            else:
+                # Check for session consistency remove sessions that are not in all tables
+                sessions_to_remove, consistent_sessions = (
+                    filter_sessions_with_non_max_counts(sessionsCount)
+                )
+                for session in sessions_to_remove:
+                    for table in PURGE_GROUP:
+                        self.purge_rows_by_value(
+                            table,
+                            "session",
+                            session,
+                        )
+                # If all sessions are consistent, then we can purge the oldest session
+                oldestSession = list(consistent_sessions.keys())[0]
+                for table in PURGE_GROUP:
+                    self.purge_rows_by_value(
+                        table,
+                        "session",
+                        oldestSession,
+                    )
+
+            self.vacuum()
+            return True
+        except Exception as e:
+            print(f"An error occurred while purging the database: {e}")
+            self.service_log_msg("Purging DB", str(e))
+            return False
+
+    def vacuum(self):
+        """
+        Reclaims the unused space in the database file and reduces its size.
+        """
+        try:
+            start_time = time.time()
+            self.cursor.execute("VACUUM")
+            self.connection.commit()
+            end_time = time.time()
+            print(
+                f"Successfully reclaimed space and reduced the database file size. Time taken: {end_time - start_time:.2f} seconds."
+            )
+
+        except sqlite3.Error as e:
+            print(f"An error occurred while vacuuming the database: {e}")
+            self.connection.rollback()
+
+
+### Helper functions ###
+def filter_sessions_with_non_max_counts(session_counts):
+    """
+    Filters out the sessions that have the largest count while maintaining the input order.
+
+    Parameters:
+        session_counts (dict): A dictionary with session IDs as keys and counts as values.
+
+    Returns:
+        tuple: A tuple containing:
+            - dict: A dictionary with sessions that do not have the maximum count.
+            - dict: A dictionary with sessions that have the maximum count, maintaining the input order.
+    """
+    if not session_counts:
+        return {}, {}
+
+    # Find the maximum count value
+    max_count = max(session_counts.values())
+
+    # Initialize dictionaries for filtered sessions and max count sessions
+    filtered_sessions = {}
+    max_count_sessions = {}
+
+    # Iterate over the dictionary to populate both dictionaries
+    for session, count in session_counts.items():
+        if count == max_count:
+            max_count_sessions[session] = count
+        else:
+            filtered_sessions[session] = count
+
+    return filtered_sessions, max_count_sessions
