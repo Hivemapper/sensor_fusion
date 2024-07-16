@@ -21,13 +21,13 @@ class TableName(Enum):
 
 
 # Tables in Purge Group
-PURGE_GROUP = {
-    TableName.GNSS_TABLE,
-    TableName.GNSS_AUTH_TABLE,
-    TableName.IMU_RAW_TABLE,
-    TableName.IMU_PROCESSED_TABLE,
-    TableName.MAG_TABLE,
-}
+PURGE_GROUP = [
+    TableName.GNSS_TABLE.value,
+    TableName.GNSS_AUTH_TABLE.value,
+    TableName.IMU_RAW_TABLE.value,
+    TableName.IMU_PROCESSED_TABLE.value,
+    TableName.MAG_TABLE.value,
+]
 
 # Purging Constants
 DB_SIZE_LIMIT = 1024 * 1024 * 200  # 200 MB
@@ -126,6 +126,7 @@ class SqliteInterface:
     def __init__(self, data_logger_path: str = DATA_LOGGER_PATH) -> None:
         self.connection = sqlite3.connect(data_logger_path)
         self.cursor = self.connection.cursor()
+        self.data_logger_path = data_logger_path
 
     def get_db_size(self) -> int:
         """
@@ -144,7 +145,7 @@ class SqliteInterface:
         """
         try:
             # SQL command to create the imu table if it doesn't already exist
-            create_imu_table_sql = f"""
+            create_imu_table_sql = """
             CREATE TABLE IF NOT EXISTS imu_processed (
                         id INTEGER NOT NULL PRIMARY KEY,
                         row_id INTEGER NOT NULL,

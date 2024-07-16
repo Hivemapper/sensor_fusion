@@ -103,24 +103,24 @@ def main(dbPath: str, debug: bool = False):
     # Setup
     db = SqliteInterface(dbPath)
     # Setup Error Logging Table
-    if not db.check_table_exists(TableName.SENSOR_FUSION_ERROR_LOG_TABLE):
+    if not db.check_table_exists(TableName.SENSOR_FUSION_ERROR_LOG_TABLE.value):
         db.create_service_log_table()
     # Remove the processed table if it exists to start fresh for debugging
     if debug:
         print("Debugging Mode")
-        db.drop_table(TableName.IMU_PROCESSED_TABLE)
+        db.drop_table(TableName.IMU_PROCESSED_TABLE.value)
 
     # These indexes are used to track diff between raw and processed tables
     # They will track row ids from the raw table
     rawCurTableIndex = -1
     processedCurTableIndex = -1
     # Setup Processed Data Table
-    if not db.check_table_exists(TableName.IMU_PROCESSED_TABLE):
+    if not db.check_table_exists(TableName.IMU_PROCESSED_TABLE.value):
         db.create_processed_imu_table()
-        processedCurTableIndex = db.find_starting_row_id(TableName.IMU_RAW_TABLE)
+        processedCurTableIndex = db.find_starting_row_id(TableName.IMU_RAW_TABLE.value)
     else:
         processedCurTableIndex = db.find_most_recent_row_id(
-            TableName.IMU_PROCESSED_TABLE
+            TableName.IMU_PROCESSED_TABLE.value
         )
 
     # infinite loop to process data as it comes in
@@ -130,10 +130,16 @@ def main(dbPath: str, debug: bool = False):
         db.purge()
 
         ### Find where to start rwo index
-        rawCurTableIndex = db.find_most_recent_row_id(TableName.IMU_RAW_TABLE)
-        # Failed to get the current index, likely due to db being busy
+        rawCurTableIndex = db.find_most_recent_row_id(TableName.IMU_RAW_TABLE.value)
+        # Catch in case either index is not
         if rawCurTableIndex == None:
             time.sleep(LOOP_SLEEP_TIME)
+            continue
+
+        if processedCurTableIndex == None:
+            processedCurTableIndex = db.find_most_recent_row_id(
+                TableName.IMU_PROCESSED_TABLE.value
+            )
             continue
 
         if debug:
@@ -207,7 +213,7 @@ def main(dbPath: str, debug: bool = False):
                 )
             ## Only set next index if all data was processed
             if next_index != -1:
-                processedCurTableIndex = next_index
+                processedCurTableIndex = int(next_index)
 
             ## Print out data for evaluation
             # if debug:
@@ -276,6 +282,6 @@ if __name__ == "__main__":
 
     print("Starting IMU processing")
     # This is for letting system set up everything before starting the main loop
-    time.sleep(3)
+    time.sleep(5)
     print("Starting Python Data Layer Processing ...")
     main(db_path, False)
