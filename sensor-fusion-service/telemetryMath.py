@@ -15,7 +15,7 @@ THRESHOLD_ACCEL = 0.00005
 THRESHOLD_GYRO = 0.00005
 
 
-def calculateAverageFrequency(epoch_times_ms):
+def calculate_average_frequency(epoch_times_ms):
     """
     Calculates the average frequency of events given a list of epoch times in milliseconds starting from zero.
     Parameters:
@@ -36,7 +36,7 @@ def calculateAverageFrequency(epoch_times_ms):
     return average_frequency
 
 
-def extractAndSmoothImuData(imu_data: List[IMUData]):
+def extract_smooth_imu_data(imu_data: List[IMUData]):
     """
     Extracts accelerometer, gyroscope data, and time differences from the given data.
     Parameters:
@@ -61,7 +61,7 @@ def extractAndSmoothImuData(imu_data: List[IMUData]):
         session.append(point.session)
         row_id.append(point.row_id)
 
-    freq = math.floor(calculateAverageFrequency(converted_time))
+    freq = math.floor(calculate_average_frequency(converted_time))
     print(f"IMU data frequency: {freq} Hz")
 
     acc_x = butter_lowpass_filter(acc_x, freq)
@@ -87,16 +87,16 @@ def extractAndSmoothImuData(imu_data: List[IMUData]):
     )
 
 
-def extractGNSSData(data: List[GNSSData]):
+def extract_gnss_data(data: List[GNSSData]):
     """
     Extracts GNSS data from the given data.
     Parameters:
-    - data: List of GNSSData instances containing 'lat', 'lon', 'alt', 'speed', 'heading', 'headingAccuracy', 'hdop', 'gdop', and 'time'.
+    - data: List of GNSSData instances containing 'lat', 'lon', 'alt', 'speed', 'heading', 'heading_accuracy', 'hdop', 'gdop', and 'time'.
     Returns:
-    - Tuple containing lists for 'lat', 'lon', 'alt', 'speed', 'heading', 'headingAccuracy', 'hdop', 'gdop', and time differences.
+    - Tuple containing lists for 'lat', 'lon', 'alt', 'speed', 'heading', 'heading_accuracy', 'hdop', 'gdop', and time differences.
     """
     lat, lon, alt = [], [], []
-    speed, heading, headingAccuracy = [], [], []
+    speed, heading, heading_accuracy = [], [], []
     hdop, gdop = [], []
     system_time = []
     gnss_real_time, time_resolved, time, session = [], [], [], []
@@ -107,7 +107,7 @@ def extractGNSSData(data: List[GNSSData]):
         alt.append(point.alt)
         speed.append(point.speed)
         heading.append(point.heading)
-        headingAccuracy.append(point.headingAccuracy)
+        heading_accuracy.append(point.heading_accuracy)
         hdop.append(point.hdop)
         gdop.append(point.gdop)
         system_time.append(convertTimeToEpoch(point.system_time))
@@ -116,7 +116,7 @@ def extractGNSSData(data: List[GNSSData]):
         time.append(point.system_time)
         session.append(point.session)
 
-    freq = math.floor(calculateAverageFrequency(system_time))
+    freq = math.floor(calculate_average_frequency(system_time))
     print(f"GNSS data frequency: {freq} Hz")
 
     return (
@@ -125,7 +125,7 @@ def extractGNSSData(data: List[GNSSData]):
         alt,
         speed,
         heading,
-        headingAccuracy,
+        heading_accuracy,
         hdop,
         gdop,
         system_time,
@@ -186,7 +186,7 @@ def threshold_based_window_averaging(data, times, window_size_ms, threshold):
     return np.array(output)
 
 
-def calculateStationary(
+def calculate_stationary_status(
     acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_freq, imu_time, debug=False
 ):
     # get point to point diffs for all sensors

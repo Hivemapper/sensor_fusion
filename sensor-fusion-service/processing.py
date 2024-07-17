@@ -2,7 +2,11 @@ from typing import List
 import numpy as np
 from scipy.interpolate import CubicSpline
 
-from telemetryMath import extractAndSmoothImuData, extractGNSSData, calculateStationary
+from telemetryMath import (
+    extract_smooth_imu_data,
+    extract_gnss_data,
+    calculate_stationary_status,
+)
 from conversions import lists_to_dicts, lla_to_enu, enu_to_lla
 from sqliteInterface import IMUData, GNSSData
 from filter import ExtendedKalmanFilter as EKF
@@ -17,8 +21,11 @@ INITIAL_YAW = 0
 #######################################
 
 
-def processRawData(
-    gnssData: List[GNSSData], imuData: List[IMUData], debug: bool = False
+####################### Main Processing Function #######################
+
+
+def process_raw_data(
+    gnss_data: List[GNSSData], imu_data: List[IMUData], debug: bool = False
 ):
     """
     This function processes the raw IMU data and returns the processed data.
@@ -42,14 +49,14 @@ def processRawData(
         row_id,
         imu_freq,
         imu_converted_time,
-    ) = extractAndSmoothImuData(imuData)
+    ) = extract_smooth_imu_data(imu_data)
     (
         lat,
         lon,
         alt,
         gnss_speed,
         gnss_heading,
-        gnss_headingAccuracy,
+        gnss_heading_accuracy,
         hdop,
         gdop,
         gnss_system_time,  ### time given in epoch format that should be used for calculations
@@ -58,10 +65,10 @@ def processRawData(
         gnss_time,  ### Time that is in original format
         gnss_session,
         gnss_freq,
-    ) = extractGNSSData(gnssData)
+    ) = extract_gnss_data(gnss_data)
 
     ########### Process Sensor Data ###########
-    stationary = calculateStationary(
+    stationary = calculate_stationary_status(
         acc_x,
         acc_y,
         acc_z,
@@ -73,8 +80,26 @@ def processRawData(
         debug,
     )
 
+    fused_position, fused_heading = calculate_fused_position(
+        [0, 0, 0],  ### For now orientation is set to 0,0,0
+        acc_x,
+        acc_y,
+        acc_z,
+        gyro_x,
+        gyro_y,
+        gyro_z,
+        imu_converted_time,
+        lat,
+        lon,
+        alt,
+        gnss_system_time,
+    )
+
+    fused_lons = fused_position[:, 0]
+    fused_lats = fused_position[:, 1]
+
     ########### Package Processed Data ###########
-    keys = [
+    processed_imu_keys = [
         "acc_x",
         "acc_y",
         "acc_z",
@@ -87,8 +112,8 @@ def processRawData(
         "session",
         "row_id",
     ]
-    processedIMUData = lists_to_dicts(
-        keys,
+    processed_imu_data = lists_to_dicts(
+        processed_imu_keys,
         acc_x,
         acc_y,
         acc_z,
@@ -101,9 +126,30 @@ def processRawData(
         imu_session,
         row_id,
     )
+
+    fused_keys = [
+        "gnss_lat",
+        "gnss_lon",
+        "fused_lat",
+        "fused_lon",
+        "fused_heading",
+        "time",
+        "session",
+    ]
+    fused_position_data = lists_to_dicts(
+        fused_keys,
+        lat,
+        lon,
+        fused_lats,
+        fused_lons,
+        fused_heading,
+        gnss_system_time,
+        gnss_session,
+    )
+
     if debug:
         return (
-            processedIMUData,
+            processed_imu_data,
             acc_x,
             acc_y,
             acc_z,
@@ -113,10 +159,10 @@ def processRawData(
             imu_converted_time,
         )
 
-    return processedIMUData
+    return processed_imu_data
 
 
-#### Orientation???????????????????????
+###################### Kalman Filter Main Function #######################
 
 
 def calculate_fused_position(
@@ -133,10 +179,10 @@ def calculate_fused_position(
     alt,
     gnss_time,
 ):
-    forward_velocity = calculateForwardVelocity(
+    forward_velocity = calculate_forward_velocity(
         orientation, acc_x, acc_y, acc_z, imu_time
     )
-    yaw_rates = calculateYawRate(orientation, gyro_x, gyro_y, gyro_z, imu_time)
+    yaw_rates = calculate_yaw_rate(orientation, gyro_x, gyro_y, gyro_z, imu_time)
 
     # convert gnss position to enu coordinate frame
     points_lla = np.array(list(zip(lon, lat, alt)))
@@ -186,7 +232,7 @@ def calculate_fused_position(
 ###################### Math for Kalman Filter ######################
 
 
-def calculateForwardVelocity(orientation, acc_x, acc_y, acc_z, time):
+def calculate_forward_velocity(orientation, acc_x, acc_y, acc_z, time):
     """
     Calculate the forward velocity of a vehicle given its orientation and accelerations over time.
 
@@ -245,7 +291,7 @@ def calculateForwardVelocity(orientation, acc_x, acc_y, acc_z, time):
     return velocity
 
 
-def calculateYawRate(orientation, gyro_x, gyro_y, gyro_z, time):
+def calculate_yaw_rate(orientation, gyro_x, gyro_y, gyro_z, time):
     """
     Calculate the yaw rate of a vehicle given its orientation and gyroscope readings over time.
 

@@ -82,7 +82,7 @@ class GNSSData:
         alt,
         speed,
         heading,
-        headingAccuracy,
+        heading_accuracy,
         hdop,
         gdop,
         system_time,
@@ -95,7 +95,7 @@ class GNSSData:
         self.alt = alt
         self.speed = speed
         self.heading = heading
-        self.headingAccuracy = headingAccuracy
+        self.heading_accuracy = heading_accuracy
         self.hdop = hdop
         self.gdop = gdop
         self.system_time = system_time
@@ -215,6 +215,7 @@ class SqliteInterface:
                         gnss_lon REAL NOT NULL,
                         fused_lat REAL NOT NULL,
                         fused_lon REAL NOT NULL,
+                        fused_heading REAL NOT NULL,
                         session TEXT NOT NULL DEFAULT ''
             );
             """
@@ -751,29 +752,29 @@ class SqliteInterface:
                 return True
 
             # sessions here are oldest to newest, important to keep this in mind
-            sessionsCount = {}
-            tableRowCounts = {}
+            sessions_count = {}
+            table_row_counts = {}
             for table in PURGE_GROUP:
-                curTableSessions = self.get_unique_values_ordered(
+                cur_table_sessions = self.get_unique_values_ordered(
                     table, "session", "id"
                 )
-                tableRowCounts[table] = self.get_row_count(table)
-                for session in curTableSessions:
-                    if session not in sessionsCount:
-                        sessionsCount[session] = 1
+                table_row_counts[table] = self.get_row_count(table)
+                for session in cur_table_sessions:
+                    if session not in sessions_count:
+                        sessions_count[session] = 1
                     else:
-                        sessionsCount[session] += 1
+                        sessions_count[session] += 1
 
             # If there is only one session, then we can purge the oldest rows
-            if len(sessionsCount) == 1:
+            if len(sessions_count) == 1:
                 for table in PURGE_GROUP:
                     self.purge_oldest_rows(
-                        table, math.ceil(tableRowCounts[table] / 2.0)
+                        table, math.ceil(table_row_counts[table] / 2.0)
                     )
             else:
                 # Check for session consistency remove sessions that are not in all tables
                 sessions_to_remove, consistent_sessions = (
-                    filter_sessions_with_non_max_counts(sessionsCount)
+                    filter_sessions_with_non_max_counts(sessions_count)
                 )
                 for session in sessions_to_remove:
                     for table in PURGE_GROUP:
@@ -783,12 +784,12 @@ class SqliteInterface:
                             session,
                         )
                 # If all sessions are consistent, then we can purge the oldest session
-                oldestSession = list(consistent_sessions.keys())[0]
+                oldest_session = list(consistent_sessions.keys())[0]
                 for table in PURGE_GROUP:
                     self.purge_rows_by_value(
                         table,
                         "session",
-                        oldestSession,
+                        oldest_session,
                     )
 
             self.vacuum()

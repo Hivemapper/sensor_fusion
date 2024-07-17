@@ -2,7 +2,7 @@ import time
 import argparse
 # import matplotlib.pyplot as plt
 
-from processing import grab_most_recent_raw_data_session, processRawData
+from processing import grab_most_recent_raw_data_session, process_raw_data
 from sqliteInterface import (
     SqliteInterface,
     TableName,
@@ -121,10 +121,10 @@ def main(dbPath: str, debug: bool = False):
                     gyro_y,
                     gyro_z,
                     imu_time,
-                ) = processRawData(gnssData, rawIMUData, debug)
+                ) = process_raw_data(gnssData, rawIMUData, debug)
             else:
                 try:
-                    processedIMUData = processRawData(gnssData, rawIMUData)
+                    processedIMUData = process_raw_data(gnssData, rawIMUData)
                 except Exception as e:
                     db.service_log_msg("Processing IMU Data", str(e))
                     continue
