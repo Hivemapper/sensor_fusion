@@ -99,7 +99,7 @@ def extractGNSSData(data: List[GNSSData]):
     speed, heading, headingAccuracy = [], [], []
     hdop, gdop = [], []
     system_time = []
-    gnss_real_time, time_resolved = [], []
+    gnss_real_time, time_resolved, time, session = [], [], [], []
 
     for point in data:
         lat.append(point.lat)
@@ -113,6 +113,8 @@ def extractGNSSData(data: List[GNSSData]):
         system_time.append(convertTimeToEpoch(point.system_time))
         gnss_real_time.append(convertTimeToEpoch(point.time))
         time_resolved.append(point.time_resolved)
+        time.append(point.system_time)
+        session.append(point.session)
 
     freq = math.floor(calculateAverageFrequency(system_time))
     print(f"GNSS data frequency: {freq} Hz")
@@ -129,6 +131,8 @@ def extractGNSSData(data: List[GNSSData]):
         system_time,
         gnss_real_time,
         time_resolved,
+        time,
+        session,
         freq,
     )
 
