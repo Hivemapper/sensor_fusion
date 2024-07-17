@@ -1,14 +1,10 @@
 import time
 import argparse
-from datetime import datetime
-from typing import List
 # import matplotlib.pyplot as plt
 
-from conversions import lists_to_dicts
-from telemetryMath import extractAndSmoothImuData, extractGNSSData, calculateStationary
+from processing import grab_most_recent_raw_data_session, processRawData
 from sqliteInterface import (
     SqliteInterface,
-    IMUData,
     TableName,
     DATA_LOGGER_PATH,
 )
@@ -23,86 +19,9 @@ LOOP_SLEEP_TIME = (MIN_DATA_POINTS / IMU_SET_FREQUENCY) / 8.0  # seconds
 print(f"Loop Sleep Time: {LOOP_SLEEP_TIME}")
 
 
-def processIMUData(data: List[IMUData], debug: bool = False):
-    """
-    This function processes the raw IMU data and returns the processed data.
-    Parameters:
-    - data: A list of dictionaries, where each dictionary represents a row of raw IMU data.
-    Returns:
-    - list: A list of dictionaries, where each dictionary represents a row of processed IMU data.
-    """
-    (
-        acc_x,
-        acc_y,
-        acc_z,
-        gyro_x,
-        gyro_y,
-        gyro_z,
-        time,
-        temperature,
-        session,
-        row_id,
-        imu_freq,
-        imu_converted_time,
-    ) = extractAndSmoothImuData(data)
-    stationary = calculateStationary(
-        acc_x,
-        acc_y,
-        acc_z,
-        gyro_x,
-        gyro_y,
-        gyro_z,
-        imu_freq,
-        imu_converted_time,
-        debug,
-    )
-
-    keys = [
-        "acc_x",
-        "acc_y",
-        "acc_z",
-        "gyro_x",
-        "gyro_y",
-        "gyro_z",
-        "stationary",
-        "time",
-        "temperature",
-        "session",
-        "row_id",
-    ]
-    processedData = lists_to_dicts(
-        keys,
-        acc_x,
-        acc_y,
-        acc_z,
-        gyro_x,
-        gyro_y,
-        gyro_z,
-        stationary,
-        time,
-        temperature,
-        session,
-        row_id,
-    )
-    if debug:
-        return (
-            processedData,
-            acc_x,
-            acc_y,
-            acc_z,
-            gyro_x,
-            gyro_y,
-            gyro_z,
-            imu_converted_time,
-        )
-
-    return processedData
-
-
 def main(dbPath: str, debug: bool = False):
-    # Setup
+    ########### Setup service tables and grab starting indexes for raw data processing ###########
     db = SqliteInterface(dbPath)
-    # Setup Error Logging Table
     if not db.check_table_exists(TableName.SENSOR_FUSION_ERROR_LOG_TABLE.value):
         db.create_service_log_table()
     # Remove the processed table if it exists to start fresh for debugging
@@ -110,110 +29,123 @@ def main(dbPath: str, debug: bool = False):
         print("Debugging Mode")
         db.drop_table(TableName.IMU_PROCESSED_TABLE.value)
 
-    # These indexes are used to track diff between raw and processed tables
-    # They will track row ids from the raw table
-    rawCurTableIndex = -1
-    processedCurTableIndex = -1
-    # Setup Processed Data Table
+    if not db.check_table_exists(TableName.FUSED_POSITION_TABLE.value):
+        db.create_fused_position_table()
+
+    # These indexes track what data has been processed
+    rawIMUIndex = -1
+    processedIMUIndex = -1
+    # Setup Processed IMU Data Table
     if not db.check_table_exists(TableName.IMU_PROCESSED_TABLE.value):
         db.create_processed_imu_table()
-        processedCurTableIndex = db.find_starting_row_id(TableName.IMU_RAW_TABLE.value)
+        processedIMUIndex = db.find_starting_row_id(TableName.IMU_RAW_TABLE.value)
     else:
-        processedCurTableIndex = db.find_most_recent_row_id(
+        processedIMUIndex = db.find_most_recent_row_id(
             TableName.IMU_PROCESSED_TABLE.value
         )
 
-    # infinite loop to process data as it comes in
+    ############################### Main Service Loop ###############################
     while 1:
-        # Check for need to purge DB every loop
+        ########### Purge DB if required ###########
         # TODO: Modify to not be every loop, this can be done much less frequently
         db.purge()
 
-        ### Find where to start rwo index
-        rawCurTableIndex = db.find_most_recent_row_id(TableName.IMU_RAW_TABLE.value)
-        # Catch in case either index is not
-        if rawCurTableIndex == None:
+        ########### Check for enough Data for Processing ###########
+        ### Find where to start raw index
+        rawIMUIndex = db.find_most_recent_row_id(TableName.IMU_RAW_TABLE.value)
+        # Catch in case either index is None
+        if rawIMUIndex == None:
             time.sleep(LOOP_SLEEP_TIME)
             continue
 
-        if processedCurTableIndex == None:
-            processedCurTableIndex = db.find_most_recent_row_id(
+        if processedIMUIndex == None:
+            processedIMUIndex = db.find_most_recent_row_id(
                 TableName.IMU_PROCESSED_TABLE.value
             )
             continue
 
         if debug:
-            print("Raw Table Index: ", rawCurTableIndex)
-            print("Processed Table Index: ", processedCurTableIndex)
+            print("Raw Table Index: ", rawIMUIndex)
+            print("Processed Table Index: ", processedIMUIndex)
 
-        index_window_size = rawCurTableIndex - processedCurTableIndex
+        index_window_size = rawIMUIndex - processedIMUIndex
 
+        ########### Enough Data to Retrieve ###########
         if index_window_size >= MIN_DATA_POINTS:
-            now = time.time()
+            if debug:
+                now = time.time()
             # Limit the number of data points to process at once
-            furthest_index = processedCurTableIndex + MIN_DATA_POINTS
+            furthestIMUIndex = processedIMUIndex + MIN_DATA_POINTS
 
             try:
-                rawData = db.get_raw_imu_by_row_range(
-                    processedCurTableIndex, furthest_index
+                rawIMUData = db.get_raw_imu_by_row_range(
+                    processedIMUIndex, furthestIMUIndex
                 )
-                ## If there is no data to process, skip the processing step, increment the processedCurTableIndex, and continue
-                if len(rawData) == 0:
+                ## If there is no data to process, skip the processing step, increment the processedIMUIndex, and continue
+                if len(rawIMUData) == 0:
                     print("No data to process")
-                    processedCurTableIndex = furthest_index + 1
+                    processedIMUIndex = furthestIMUIndex + 1
                     continue
+
+                rawIMUData, next_index = grab_most_recent_raw_data_session(
+                    rawIMUData,
+                    processedIMUIndex,
+                )
+                # Using imu raw data, determine GNSS data to process
+                imu_session = rawIMUData[0].session
+                imu_chunk_start_time = rawIMUData[0].time
+                imu_chunk_end_time = rawIMUData[-1].time
+                gnss_start_index = db.get_nearest_row_id_to_time(
+                    TableName.GNSS_TABLE.value, imu_chunk_start_time, imu_session
+                )
+                gnss_end_index = db.get_nearest_row_id_to_time(
+                    TableName.GNSS_TABLE.value, imu_chunk_end_time, imu_session
+                )
+                gnssData = db.get_gnss_by_row_range(gnss_start_index, gnss_end_index)
+
             except Exception as e:
-                db.service_log_msg("Retrieving IMU Data", str(e))
+                db.service_log_msg("Retrieving IMU or GNSS Data", str(e))
                 continue
 
             if debug:
-                print(f"Processing {len(rawData)} data points")
+                print(f"Processing {len(rawIMUData)} imu data points")
 
-            next_index = -1
-            # Handle pulling singluar drive sessions here
-            starting_session = rawData[0].session
-            ending_session = rawData[-1].session
-            if starting_session != ending_session:
-                # iterate backwards through the data to find the start of the new session
-                for i in range(len(rawData) - 1, -1, -1):
-                    if rawData[i].session == starting_session:
-                        # reduce rawData to only the new session
-                        rawData = rawData[: i + 1]
-                        print(f"Reduced data to {len(rawData)} data points")
-                        next_index = processedCurTableIndex + i + 1
-                        break
-            else:
-                next_index = furthest_index + 1
-
-            ### Processing Section
+            ########### Section for processing Data ###########
             if debug:
-                processedData, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_time = (
-                    processIMUData(rawData, debug)
-                )
+                (
+                    processedIMUData,
+                    acc_x,
+                    acc_y,
+                    acc_z,
+                    gyro_x,
+                    gyro_y,
+                    gyro_z,
+                    imu_time,
+                ) = processRawData(gnssData, rawIMUData, debug)
             else:
                 try:
-                    processedData = processIMUData(rawData)
+                    processedIMUData = processRawData(gnssData, rawIMUData)
                 except Exception as e:
                     db.service_log_msg("Processing IMU Data", str(e))
                     continue
-            ### End Processing Section
+            ########### Section for inserting processed Data ###########
             try:
-                db.insert_processed_imu_data(processedData)
+                db.insert_processed_imu_data(processedIMUData)
             except Exception as e:
                 db.service_log_msg("Inserting Processed IMU Data", str(e))
                 continue
 
-            totalTime = time.time() - now
             if debug:
+                totalTime = time.time() - now
                 print(
-                    f"Processed {len(processedData)} data points in {totalTime} seconds"
+                    f"Processed {len(processedIMUData)} imu data points in {totalTime} seconds"
                 )
                 print(
-                    f"Inserted {len(processedData)} data points into the processed table"
+                    f"Inserted {len(processedIMUData)} imu data points into the processed table"
                 )
             ## Only set next index if all data was processed
             if next_index != -1:
-                processedCurTableIndex = int(next_index)
+                processedIMUIndex = int(next_index)
 
             ## Print out data for evaluation
             # if debug:
@@ -280,8 +212,8 @@ if __name__ == "__main__":
     db_path = args.dbPath if args.dbPath is not None else DATA_LOGGER_PATH
     debug_mode = True if args.dbPath is not None else False
 
-    print("Starting IMU processing")
+    print("Waiting for Sensor Fusion Service to start ...")
     # This is for letting system set up everything before starting the main loop
     time.sleep(5)
-    print("Starting Python Data Layer Processing ...")
+    print("Starting Sensor Fusion Service ...")
     main(db_path, False)

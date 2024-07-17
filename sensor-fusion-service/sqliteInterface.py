@@ -18,6 +18,7 @@ class TableName(Enum):
     IMU_PROCESSED_TABLE = "imu_processed"
     MAG_TABLE = "magnetometer"
     SENSOR_FUSION_ERROR_LOG_TABLE = "sensor_fusion_error_logs"
+    FUSED_POSITION_TABLE = "fused_position"
 
 
 # Tables in Purge Group
@@ -27,6 +28,7 @@ PURGE_GROUP = [
     TableName.IMU_RAW_TABLE.value,
     TableName.IMU_PROCESSED_TABLE.value,
     TableName.MAG_TABLE.value,
+    TableName.FUSED_POSITION_TABLE.value,
 ]
 
 # Purging Constants
@@ -138,6 +140,7 @@ class SqliteInterface:
             print(f"An error occurred: {e}")
             return -1
 
+    ################# Table Creation Functions #################
     @retry()
     def create_processed_imu_table(self):
         """
@@ -198,6 +201,35 @@ class SqliteInterface:
             print(f"An error occurred while creating the error log table: {e}")
             self.connection.rollback()
 
+    def create_fused_position_table(self):
+        """
+        Creates the fused position table in the database if it does not already exist.
+        """
+        try:
+            # SQL command to create the fused position table if it doesn't already exist
+            create_fused_position_table_sql = """
+            CREATE TABLE IF NOT EXISTS fused_position (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        time TIMESTAMP NOT NULL,
+                        gnss_lat REAL NOT NULL,
+                        gnss_lon REAL NOT NULL,
+                        fused_lat REAL NOT NULL,
+                        fused_lon REAL NOT NULL,
+                        session TEXT NOT NULL DEFAULT ''
+            );
+            """
+            # Execute the SQL command to create the fused position table
+            self.cursor.execute(create_fused_position_table_sql)
+
+            # Commit the changes to the database
+            self.connection.commit()
+
+        except sqlite3.Error as e:
+            # Handle any SQLite errors
+            print(f"An error occurred while creating the fused position table: {e}")
+            self.connection.rollback()
+
+    ################# Table Write Functions #################
     @retry()
     def service_log_msg(self, msg: str, error: str):
         """
@@ -214,6 +246,88 @@ class SqliteInterface:
             print(f"An error occurred while writing to the error table: {e}")
             self.connection.rollback()
 
+    @retry()
+    def insert_processed_imu_data(self, processed_data):
+        """
+        Inserts one or multiple rows of IMU data into the imu table.
+
+        Args:
+            data (list): A list of dictionaries, each containing the data for a row.
+
+        Returns:
+            bool: True if the insert was successful, False otherwise.
+        """
+        try:
+            insert_query = """
+                INSERT INTO imu_processed (row_id, time, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, stationary, temperature, session)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            # Prepare data for insertion
+            data_to_insert = [
+                (
+                    entry["row_id"],
+                    entry["time"],
+                    entry["acc_x"],
+                    entry["acc_y"],
+                    entry["acc_z"],
+                    entry["gyro_x"],
+                    entry["gyro_y"],
+                    entry["gyro_z"],
+                    entry["stationary"],
+                    entry["temperature"],
+                    entry["session"],
+                )
+                for entry in processed_data
+            ]
+            self.cursor.executemany(insert_query, data_to_insert)
+            self.connection.commit()
+            return True
+        except sqlite3.Error as e:
+            print(
+                f"An error occurred while inserting data into the processed_data table: {e}"
+            )
+            self.connection.rollback()
+            return False
+
+    @retry()
+    def insert_fused_position_data(self, fused_position_data):
+        """
+        Inserts one or multiple rows of fused position data into the fused position table.
+
+        Args:
+            data (list): A list of dictionaries, each containing the data for a row.
+
+        Returns:
+            bool: True if the insert was successful, False otherwise.
+        """
+        try:
+            insert_query = """
+                INSERT INTO fused_position (time, gnss_lat, gnss_lon, fused_lat, fused_lon, session)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """
+            # Prepare data for insertion
+            data_to_insert = [
+                (
+                    entry["time"],
+                    entry["gnss_lat"],
+                    entry["gnss_lon"],
+                    entry["fused_lat"],
+                    entry["fused_lon"],
+                    entry["session"],
+                )
+                for entry in fused_position_data
+            ]
+            self.cursor.executemany(insert_query, data_to_insert)
+            self.connection.commit()
+            return True
+        except sqlite3.Error as e:
+            print(
+                f"An error occurred while inserting data into the fused position table: {e}"
+            )
+            self.connection.rollback()
+            return False
+
+    ################# Table Read Functions #################
     @retry()
     def find_starting_row_id(self, table_name):
         """
@@ -375,90 +489,6 @@ class SqliteInterface:
             return []
 
     @retry()
-    def insert_processed_imu_data(self, processed_data):
-        """
-        Inserts one or multiple rows of IMU data into the imu table.
-
-        Args:
-            data (list): A list of dictionaries, each containing the data for a row.
-
-        Returns:
-            bool: True if the insert was successful, False otherwise.
-        """
-        try:
-            insert_query = """
-                INSERT INTO imu_processed (row_id, time, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, stationary, temperature, session)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """
-            # Prepare data for insertion
-            data_to_insert = [
-                (
-                    entry["row_id"],
-                    entry["time"],
-                    entry["acc_x"],
-                    entry["acc_y"],
-                    entry["acc_z"],
-                    entry["gyro_x"],
-                    entry["gyro_y"],
-                    entry["gyro_z"],
-                    entry["stationary"],
-                    entry["temperature"],
-                    entry["session"],
-                )
-                for entry in processed_data
-            ]
-            self.cursor.executemany(insert_query, data_to_insert)
-            self.connection.commit()
-            return True
-        except sqlite3.Error as e:
-            print(
-                f"An error occurred while inserting data into the processed_data table: {e}"
-            )
-            self.connection.rollback()
-            return False
-
-    @retry()
-    def check_table_exists(self, table_name):
-        """
-        Checks if a given table exists in the database.
-
-        Parameters:
-        table_name (str): The name of the table to check for existence.
-
-        Returns:
-        bool: True if the table exists, False otherwise.
-        """
-        try:
-            query = "SELECT name FROM sqlite_master WHERE type='table' AND name=?;"
-            self.cursor.execute(query, (table_name,))
-            result = self.cursor.fetchone()
-            return result is not None
-        except sqlite3.Error as e:
-            print(f"An error occurred while checking if table {table_name} exists: {e}")
-            return False
-
-    @retry()
-    def drop_table(self, table_name):
-        """
-        Drops the specified table from the database if it exists.
-        """
-        try:
-            # SQL command to drop the table if it exists
-            drop_table_sql = f"DROP TABLE IF EXISTS {table_name};"
-
-            # Execute the SQL command to drop the table
-            self.cursor.execute(drop_table_sql)
-
-            # Commit the changes to the database
-            self.connection.commit()
-            print(f"Table '{table_name}' dropped successfully.")
-
-        except sqlite3.Error as e:
-            # Handle any SQLite errors
-            print(f"An error occurred while dropping the table '{table_name}': {e}")
-            self.connection.rollback()
-
-    @retry()
     def get_nearest_row_id_to_time(
         self, tableName: str, desiredTime: str, session: str = None
     ):
@@ -560,6 +590,90 @@ class SqliteInterface:
             return -1
 
     @retry()
+    def get_unique_values_ordered(
+        self, table_name: str, column_name: str, order_by: str
+    ) -> list:
+        """
+        Gets all unique values in a column and orders them by the specified column.
+
+        :param table_name: Name of the table.
+        :param column_name: Name of the column to get unique values from.
+        :param order_by: Name of the column to order by.
+        :return: List of unique values ordered by the specified column.
+        """
+        try:
+            # Validate the table and column names to avoid SQL injection
+            if (
+                not table_name.isidentifier()
+                or not column_name.isidentifier()
+                or not order_by.isidentifier()
+            ):
+                raise ValueError("Invalid table or column name")
+
+            # SQL command to select unique values from the specified column and order by the order_by column
+            get_unique_values_ordered_sql = f"""
+            SELECT DISTINCT {column_name}
+            FROM {table_name}
+            ORDER BY {order_by} ASC;
+            """
+            # Execute the SQL command
+            self.cursor.execute(get_unique_values_ordered_sql)
+            results = self.cursor.fetchall()
+
+            # Extract the unique values from the results
+            unique_values = [row[0] for row in results]
+
+            return unique_values
+
+        except (sqlite3.Error, ValueError) as e:
+            # Handle any SQLite or validation errors
+            print(f"An error occurred while retrieving unique values: {e}")
+            return []
+
+    ################# Table Level Functions #################
+    @retry()
+    def check_table_exists(self, table_name):
+        """
+        Checks if a given table exists in the database.
+
+        Parameters:
+        table_name (str): The name of the table to check for existence.
+
+        Returns:
+        bool: True if the table exists, False otherwise.
+        """
+        try:
+            query = "SELECT name FROM sqlite_master WHERE type='table' AND name=?;"
+            self.cursor.execute(query, (table_name,))
+            result = self.cursor.fetchone()
+            return result is not None
+        except sqlite3.Error as e:
+            print(f"An error occurred while checking if table {table_name} exists: {e}")
+            return False
+
+    @retry()
+    def drop_table(self, table_name):
+        """
+        Drops the specified table from the database if it exists.
+        """
+        try:
+            # SQL command to drop the table if it exists
+            drop_table_sql = f"DROP TABLE IF EXISTS {table_name};"
+
+            # Execute the SQL command to drop the table
+            self.cursor.execute(drop_table_sql)
+
+            # Commit the changes to the database
+            self.connection.commit()
+            print(f"Table '{table_name}' dropped successfully.")
+
+        except sqlite3.Error as e:
+            # Handle any SQLite errors
+            print(f"An error occurred while dropping the table '{table_name}': {e}")
+            self.connection.rollback()
+
+    ################# Data Purging Functions #################
+    @retry()
     def purge_oldest_rows(self, table_name: str, num_rows: int):
         """
         Purges the oldest num_rows rows from the specified table.
@@ -628,47 +742,6 @@ class SqliteInterface:
             # Handle any SQLite or validation errors
             print(f"An error occurred while deleting the rows: {e}")
             self.connection.rollback()
-
-    @retry()
-    def get_unique_values_ordered(
-        self, table_name: str, column_name: str, order_by: str
-    ) -> list:
-        """
-        Gets all unique values in a column and orders them by the specified column.
-
-        :param table_name: Name of the table.
-        :param column_name: Name of the column to get unique values from.
-        :param order_by: Name of the column to order by.
-        :return: List of unique values ordered by the specified column.
-        """
-        try:
-            # Validate the table and column names to avoid SQL injection
-            if (
-                not table_name.isidentifier()
-                or not column_name.isidentifier()
-                or not order_by.isidentifier()
-            ):
-                raise ValueError("Invalid table or column name")
-
-            # SQL command to select unique values from the specified column and order by the order_by column
-            get_unique_values_ordered_sql = f"""
-            SELECT DISTINCT {column_name}
-            FROM {table_name}
-            ORDER BY {order_by} ASC;
-            """
-            # Execute the SQL command
-            self.cursor.execute(get_unique_values_ordered_sql)
-            results = self.cursor.fetchall()
-
-            # Extract the unique values from the results
-            unique_values = [row[0] for row in results]
-
-            return unique_values
-
-        except (sqlite3.Error, ValueError) as e:
-            # Handle any SQLite or validation errors
-            print(f"An error occurred while retrieving unique values: {e}")
-            return []
 
     @retry()
     def purge(self):
@@ -743,7 +816,7 @@ class SqliteInterface:
             self.connection.rollback()
 
 
-### Helper functions ###
+################# Helper Functions #################
 def filter_sessions_with_non_max_counts(session_counts):
     """
     Filters out the sessions that have the largest count while maintaining the input order.
