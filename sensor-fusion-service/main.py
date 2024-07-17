@@ -19,9 +19,9 @@ LOOP_SLEEP_TIME = (MIN_DATA_POINTS / IMU_SET_FREQUENCY) / 8.0  # seconds
 print(f"Loop Sleep Time: {LOOP_SLEEP_TIME}")
 
 
-def main(dbPath: str, debug: bool = False):
+def main(db_path: str, debug: bool = False):
     ########### Setup service tables and grab starting indexes for raw data processing ###########
-    db = SqliteInterface(dbPath)
+    db = SqliteInterface(db_path)
     if not db.check_table_exists(TableName.SENSOR_FUSION_ERROR_LOG_TABLE.value):
         db.create_service_log_table()
     # Remove the processed table if it exists to start fresh for debugging
@@ -33,14 +33,14 @@ def main(dbPath: str, debug: bool = False):
         db.create_fused_position_table()
 
     # These indexes track what data has been processed
-    rawIMUIndex = -1
-    processedIMUIndex = -1
+    raw_imu_index = -1
+    processed_imu_index = -1
     # Setup Processed IMU Data Table
     if not db.check_table_exists(TableName.IMU_PROCESSED_TABLE.value):
         db.create_processed_imu_table()
-        processedIMUIndex = db.find_starting_row_id(TableName.IMU_RAW_TABLE.value)
+        processed_imu_index = db.find_starting_row_id(TableName.IMU_RAW_TABLE.value)
     else:
-        processedIMUIndex = db.find_most_recent_row_id(
+        processed_imu_index = db.find_most_recent_row_id(
             TableName.IMU_PROCESSED_TABLE.value
         )
 
@@ -52,68 +52,68 @@ def main(dbPath: str, debug: bool = False):
 
         ########### Check for enough Data for Processing ###########
         ### Find where to start raw index
-        rawIMUIndex = db.find_most_recent_row_id(TableName.IMU_RAW_TABLE.value)
+        raw_imu_index = db.find_most_recent_row_id(TableName.IMU_RAW_TABLE.value)
         # Catch in case either index is None
-        if rawIMUIndex == None:
+        if raw_imu_index == None:
             time.sleep(LOOP_SLEEP_TIME)
             continue
 
-        if processedIMUIndex == None:
-            processedIMUIndex = db.find_most_recent_row_id(
+        if processed_imu_index == None:
+            processed_imu_index = db.find_most_recent_row_id(
                 TableName.IMU_PROCESSED_TABLE.value
             )
             continue
 
         if debug:
-            print("Raw Table Index: ", rawIMUIndex)
-            print("Processed Table Index: ", processedIMUIndex)
+            print("Raw Table Index: ", raw_imu_index)
+            print("Processed Table Index: ", processed_imu_index)
 
-        index_window_size = rawIMUIndex - processedIMUIndex
+        index_window_size = raw_imu_index - processed_imu_index
 
         ########### Enough Data to Retrieve ###########
         if index_window_size >= MIN_DATA_POINTS:
             if debug:
                 now = time.time()
             # Limit the number of data points to process at once
-            furthestIMUIndex = processedIMUIndex + MIN_DATA_POINTS
+            furthest_imu_index = processed_imu_index + MIN_DATA_POINTS
 
             try:
-                rawIMUData = db.get_raw_imu_by_row_range(
-                    processedIMUIndex, furthestIMUIndex
+                raw_imu_data = db.get_raw_imu_by_row_range(
+                    processed_imu_index, furthest_imu_index
                 )
-                ## If there is no data to process, skip the processing step, increment the processedIMUIndex, and continue
-                if len(rawIMUData) == 0:
+                ## If there is no data to process, skip the processing step, increment the processed_imu_index, and continue
+                if len(raw_imu_data) == 0:
                     print("No data to process")
-                    processedIMUIndex = furthestIMUIndex + 1
+                    processed_imu_index = furthest_imu_index + 1
                     continue
 
-                rawIMUData, next_index = grab_most_recent_raw_data_session(
-                    rawIMUData,
-                    processedIMUIndex,
+                raw_imu_data, next_index = grab_most_recent_raw_data_session(
+                    raw_imu_data,
+                    processed_imu_index,
                 )
                 # Using imu raw data, determine GNSS data to process
-                imu_session = rawIMUData[0].session
-                imu_chunk_start_time = rawIMUData[0].time
-                imu_chunk_end_time = rawIMUData[-1].time
+                imu_session = raw_imu_data[0].session
+                imu_chunk_start_time = raw_imu_data[0].time
+                imu_chunk_end_time = raw_imu_data[-1].time
                 gnss_start_index = db.get_nearest_row_id_to_time(
                     TableName.GNSS_TABLE.value, imu_chunk_start_time, imu_session
                 )
                 gnss_end_index = db.get_nearest_row_id_to_time(
                     TableName.GNSS_TABLE.value, imu_chunk_end_time, imu_session
                 )
-                gnssData = db.get_gnss_by_row_range(gnss_start_index, gnss_end_index)
+                gnss_data = db.get_gnss_by_row_range(gnss_start_index, gnss_end_index)
 
             except Exception as e:
                 db.service_log_msg("Retrieving IMU or GNSS Data", str(e))
                 continue
 
             if debug:
-                print(f"Processing {len(rawIMUData)} imu data points")
+                print(f"Processing {len(raw_imu_data)} imu data points")
 
             ########### Section for processing Data ###########
             if debug:
                 (
-                    processedIMUData,
+                    processed_imu_data,
                     acc_x,
                     acc_y,
                     acc_z,
@@ -121,16 +121,16 @@ def main(dbPath: str, debug: bool = False):
                     gyro_y,
                     gyro_z,
                     imu_time,
-                ) = process_raw_data(gnssData, rawIMUData, debug)
+                ) = process_raw_data(gnss_data, raw_imu_data, debug)
             else:
                 try:
-                    processedIMUData = process_raw_data(gnssData, rawIMUData)
+                    processed_imu_data = process_raw_data(gnss_data, raw_imu_data)
                 except Exception as e:
                     db.service_log_msg("Processing IMU Data", str(e))
                     continue
             ########### Section for inserting processed Data ###########
             try:
-                db.insert_processed_imu_data(processedIMUData)
+                db.insert_processed_imu_data(processed_imu_data)
             except Exception as e:
                 db.service_log_msg("Inserting Processed IMU Data", str(e))
                 continue
@@ -138,14 +138,14 @@ def main(dbPath: str, debug: bool = False):
             if debug:
                 totalTime = time.time() - now
                 print(
-                    f"Processed {len(processedIMUData)} imu data points in {totalTime} seconds"
+                    f"Processed {len(processed_imu_data)} imu data points in {totalTime} seconds"
                 )
                 print(
-                    f"Inserted {len(processedIMUData)} imu data points into the processed table"
+                    f"Inserted {len(processed_imu_data)} imu data points into the processed table"
                 )
             ## Only set next index if all data was processed
             if next_index != -1:
-                processedIMUIndex = int(next_index)
+                processed_imu_index = int(next_index)
 
             ## Print out data for evaluation
             # if debug:
@@ -163,7 +163,7 @@ def main(dbPath: str, debug: bool = False):
             #         "GNSS End Index: ",
             #         gnss_end_index,
             #     )
-            #     gnssData = db.get_gnss_by_row_range(gnss_start_index, gnss_end_index)
+            #     gnss_data = db.get_gnss_by_row_range(gnss_start_index, gnss_end_index)
             #     (
             #         lat,
             #         lon,
@@ -177,7 +177,7 @@ def main(dbPath: str, debug: bool = False):
             #         gnss_real_time,
             #         time_resolved,
             #         gnss_freq,
-            #     ) = extractGNSSData(gnssData)
+            #     ) = extractgnss_data(gnss_data)
             # plot_signal_over_time(gnss_system_time, speed, "Speed")
             # plot_sensor_data(
             #     imu_time,
