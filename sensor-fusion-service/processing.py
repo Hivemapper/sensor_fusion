@@ -150,6 +150,7 @@ def process_raw_data(
     if debug:
         return (
             processed_imu_data,
+            fused_position_data,
             acc_x,
             acc_y,
             acc_z,
@@ -159,7 +160,7 @@ def process_raw_data(
             imu_converted_time,
         )
 
-    return processed_imu_data
+    return processed_imu_data, fused_position_data
 
 
 ###################### Kalman Filter Main Function #######################

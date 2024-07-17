@@ -314,6 +314,7 @@ class SqliteInterface:
                     entry["gnss_lon"],
                     entry["fused_lat"],
                     entry["fused_lon"],
+                    entry["fused_heading"],
                     entry["session"],
                 )
                 for entry in fused_position_data

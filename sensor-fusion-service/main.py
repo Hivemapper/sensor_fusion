@@ -114,6 +114,7 @@ def main(db_path: str, debug: bool = False):
             if debug:
                 (
                     processed_imu_data,
+                    fused_position_data,
                     acc_x,
                     acc_y,
                     acc_z,
@@ -124,13 +125,16 @@ def main(db_path: str, debug: bool = False):
                 ) = process_raw_data(gnss_data, raw_imu_data, debug)
             else:
                 try:
-                    processed_imu_data = process_raw_data(gnss_data, raw_imu_data)
+                    processed_imu_data, fused_position_data = process_raw_data(
+                        gnss_data, raw_imu_data
+                    )
                 except Exception as e:
                     db.service_log_msg("Processing IMU Data", str(e))
                     continue
             ########### Section for inserting processed Data ###########
             try:
                 db.insert_processed_imu_data(processed_imu_data)
+                db.insert_fused_position_data(fused_position_data)
             except Exception as e:
                 db.service_log_msg("Inserting Processed IMU Data", str(e))
                 continue
