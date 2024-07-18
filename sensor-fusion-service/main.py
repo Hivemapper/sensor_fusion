@@ -2,7 +2,11 @@ import time
 import argparse
 # import matplotlib.pyplot as plt
 
-from processing import grab_most_recent_raw_data_session, process_raw_data
+from processing import (
+    grab_most_recent_raw_data_session,
+    process_raw_data,
+    remove_duplicate_imu_data,
+)
 from sqliteInterface import (
     SqliteInterface,
     TableName,
@@ -12,22 +16,25 @@ from sqliteInterface import (
 
 IMU_SET_FREQUENCY = 100.0  # Hz
 AMOUNT_OF_DATA_IN_SECONDS = 60.0  # seconds
-MIN_DATA_POINTS = (
+MIN_DATA_POINTS = int(
     IMU_SET_FREQUENCY * AMOUNT_OF_DATA_IN_SECONDS
 )  # X seconds worth of data at Y Hz
 LOOP_SLEEP_TIME = (MIN_DATA_POINTS / IMU_SET_FREQUENCY) / 8.0  # seconds
+print(f"Minimum Data Points: {MIN_DATA_POINTS}")
 print(f"Loop Sleep Time: {LOOP_SLEEP_TIME}")
 
 
 def main(db_path: str, debug: bool = False):
-    ########### Setup service tables and grab starting indexes for raw data processing ###########
     db = SqliteInterface(db_path)
-    if not db.check_table_exists(TableName.SENSOR_FUSION_ERROR_LOG_TABLE.value):
-        db.create_service_log_table()
     # Remove the processed table if it exists to start fresh for debugging
     if debug:
         print("Debugging Mode")
         db.drop_table(TableName.IMU_PROCESSED_TABLE.value)
+        db.drop_table(TableName.FUSED_POSITION_TABLE.value)
+        db.drop_table(TableName.SENSOR_FUSION_LOG_TABLE.value)
+    ########### Setup service tables and grab starting indexes for raw data processing ###########
+    if not db.check_table_exists(TableName.SENSOR_FUSION_LOG_TABLE.value):
+        db.create_service_log_table()
 
     if not db.check_table_exists(TableName.FUSED_POSITION_TABLE.value):
         db.create_fused_position_table()
@@ -38,28 +45,33 @@ def main(db_path: str, debug: bool = False):
     # Setup Processed IMU Data Table
     if not db.check_table_exists(TableName.IMU_PROCESSED_TABLE.value):
         db.create_processed_imu_table()
-        processed_imu_index = db.find_starting_row_id(TableName.IMU_RAW_TABLE.value)
+        processed_imu_index = db.get_starting_row_id(TableName.IMU_RAW_TABLE.value)
+        print("Does not exist, creating table")
+        print("Starting Index: ", processed_imu_index)
     else:
-        processed_imu_index = db.find_most_recent_row_id(
+        print("Table Exists")
+        processed_imu_index = db.get_most_recent_row_id(
             TableName.IMU_PROCESSED_TABLE.value
         )
 
     ############################### Main Service Loop ###############################
     while 1:
+        print("--------- Service Loop ---------")
+        time.sleep(0.5)
         ########### Purge DB if required ###########
         # TODO: Modify to not be every loop, this can be done much less frequently
         db.purge()
 
         ########### Check for enough Data for Processing ###########
         ### Find where to start raw index
-        raw_imu_index = db.find_most_recent_row_id(TableName.IMU_RAW_TABLE.value)
+        raw_imu_index = db.get_most_recent_row_id(TableName.IMU_RAW_TABLE.value)
         # Catch in case either index is None
         if raw_imu_index == None:
             time.sleep(LOOP_SLEEP_TIME)
             continue
 
         if processed_imu_index == None:
-            processed_imu_index = db.find_most_recent_row_id(
+            processed_imu_index = db.get_most_recent_row_id(
                 TableName.IMU_PROCESSED_TABLE.value
             )
             continue
@@ -69,9 +81,11 @@ def main(db_path: str, debug: bool = False):
             print("Processed Table Index: ", processed_imu_index)
 
         index_window_size = raw_imu_index - processed_imu_index
+        print("Index Window Size: ", index_window_size)
 
         ########### Enough Data to Retrieve ###########
         if index_window_size >= MIN_DATA_POINTS:
+            print("Enough Data to Process")
             if debug:
                 now = time.time()
             # Limit the number of data points to process at once
@@ -90,11 +104,17 @@ def main(db_path: str, debug: bool = False):
                 raw_imu_data, next_index = grab_most_recent_raw_data_session(
                     raw_imu_data,
                     processed_imu_index,
+                    furthest_imu_index,
                 )
+
+                # IMU data is imperfect and can have duplicates in time, remove them
+                raw_imu_data = remove_duplicate_imu_data(raw_imu_data)
+
                 # Using imu raw data, determine GNSS data to process
                 imu_session = raw_imu_data[0].session
                 imu_chunk_start_time = raw_imu_data[0].time
                 imu_chunk_end_time = raw_imu_data[-1].time
+
                 gnss_start_index = db.get_nearest_row_id_to_time(
                     TableName.GNSS_TABLE.value, imu_chunk_start_time, imu_session
                 )
@@ -136,7 +156,7 @@ def main(db_path: str, debug: bool = False):
                 db.insert_processed_imu_data(processed_imu_data)
                 db.insert_fused_position_data(fused_position_data)
             except Exception as e:
-                db.service_log_msg("Inserting Processed IMU Data", str(e))
+                db.service_log_msg("Inserting Processed Data", str(e))
                 continue
 
             if debug:
@@ -199,7 +219,11 @@ def main(db_path: str, debug: bool = False):
             # )
             # plt.show()
 
-        time.sleep(LOOP_SLEEP_TIME)
+        if debug:
+            print("Sleeping")
+            time.sleep(1)
+        else:
+            time.sleep(LOOP_SLEEP_TIME)
 
 
 if __name__ == "__main__":
@@ -220,4 +244,6 @@ if __name__ == "__main__":
     # This is for letting system set up everything before starting the main loop
     time.sleep(5)
     print("Starting Sensor Fusion Service ...")
-    main(db_path, False)
+    if debug_mode:
+        print(f"Using {db_path} for local testing")
+    main(db_path, debug_mode)

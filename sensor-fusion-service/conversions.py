@@ -1,11 +1,13 @@
 from datetime import datetime, timezone
+import numpy as np
 
 # references:
 # [1] https://www.enri.go.jp/~fks442/K_MUSEN/1st/1st060428rev2.pdf
 
-import numpy as np
-
 #################### Coordinate Conversions Functions ####################
+# Code adapted from:
+# https://github.com/motokimura/kalman_filter_with_kitti/blob/master/src/utils/geo_transforms.py
+
 # constant parameters defined in [1]
 _a = 6378137.0
 _f = 1.0 / 298.257223563

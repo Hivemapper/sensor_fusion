@@ -6,6 +6,8 @@ FORWARD_VELOCITY_NOISE_STD = 0.3
 YAW_RATE_NOISE_STD = 0.02
 
 
+# Code adapted from:
+# https://github.com/motokimura/kalman_filter_with_kitti/blob/master/src/kalman_filters/extended_kalman_filter.py
 class ExtendedKalmanFilter:
     """Extended Kalman Filter
     for vehicle whose motion is modeled as eq. (5.9) in [1]
@@ -54,6 +56,8 @@ class ExtendedKalmanFilter:
         # propagate state x
         x, y, theta = self.x
         v, omega = u
+        if omega == 0.0:
+            omega = 1e-8  # avoid division by zero
         r = v / omega  # turning radius
 
         dtheta = omega * dt

@@ -17,7 +17,7 @@ class TableName(Enum):
     IMU_RAW_TABLE = "imu"
     IMU_PROCESSED_TABLE = "imu_processed"
     MAG_TABLE = "magnetometer"
-    SENSOR_FUSION_ERROR_LOG_TABLE = "sensor_fusion_error_logs"
+    SENSOR_FUSION_LOG_TABLE = "sensor_fusion_logs"
     FUSED_POSITION_TABLE = "fused_position"
 
 
@@ -36,16 +36,14 @@ DB_SIZE_LIMIT = 1024 * 1024 * 200  # 200 MB
 
 
 class IMUData:
-    def __init__(
-        self, ax, ay, az, gx, gy, gz, system_time, temperature, session, row_id
-    ):
+    def __init__(self, ax, ay, az, gx, gy, gz, time, temperature, session, row_id):
         self.ax = ax
         self.ay = ay
         self.az = az
         self.gx = gx
         self.gy = gy
         self.gz = gz
-        self.system_time = system_time
+        self.time = time
         self.temperature = temperature
         self.session = session
         self.row_id = row_id
@@ -58,7 +56,7 @@ class IMUData:
             "gyro_x": self.gx,
             "gyro_y": self.gy,
             "gyro_z": self.gz,
-            "time": self.system_time,
+            "time": self.time,
             "temperature": self.temperature,
             "session": self.session,
             "row_id": self.row_id,
@@ -303,8 +301,8 @@ class SqliteInterface:
         """
         try:
             insert_query = """
-                INSERT INTO fused_position (time, gnss_lat, gnss_lon, fused_lat, fused_lon, session)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO fused_position (time, gnss_lat, gnss_lon, fused_lat, fused_lon, fused_heading, session)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             """
             # Prepare data for insertion
             data_to_insert = [
@@ -331,7 +329,7 @@ class SqliteInterface:
 
     ################# Table Read Functions #################
     @retry()
-    def find_starting_row_id(self, table_name):
+    def get_starting_row_id(self, table_name):
         """
         Finds the starting row ID for a given table in the database.
 
@@ -364,7 +362,7 @@ class SqliteInterface:
             return None
 
     @retry()
-    def find_most_recent_row_id(self, table_name):
+    def get_most_recent_row_id(self, table_name):
         """
         Finds the most recent (maximum) row ID for a given table in the database.
 

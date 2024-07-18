@@ -7,7 +7,7 @@ from telemetryMath import (
     extract_gnss_data,
     calculate_stationary_status,
 )
-from conversions import lists_to_dicts, lla_to_enu, enu_to_lla
+from conversions import lists_to_dicts, lla_to_enu, enu_to_lla, convertTimeToEpoch
 from sqliteInterface import IMUData, GNSSData
 from filter import ExtendedKalmanFilter as EKF
 
@@ -79,6 +79,10 @@ def process_raw_data(
         imu_converted_time,
         debug,
     )
+    imu_time_status = check_strictly_increasing(imu_converted_time)
+    print("IMU Time Status: ", imu_time_status)
+    gnss_time_status = check_strictly_increasing(gnss_system_time)
+    print("GNSS Time Status: ", gnss_time_status)
 
     fused_position, fused_heading = calculate_fused_position(
         [0, 0, 0],  ### For now orientation is set to 0,0,0
@@ -186,11 +190,11 @@ def calculate_fused_position(
     yaw_rates = calculate_yaw_rate(orientation, gyro_x, gyro_y, gyro_z, imu_time)
 
     # convert gnss position to enu coordinate frame
-    points_lla = np.array(list(zip(lon, lat, alt)))
+    points_lla = np.array([lon, lat, alt])
     ref_lla = [lon[0], lat[0], alt[0]]
     traj_xyz = lla_to_enu(points_lla, ref_lla)
-    pos_x = traj_xyz[:, 0]
-    pos_y = traj_xyz[:, 1]
+    pos_x = traj_xyz[0, :]
+    pos_y = traj_xyz[1, :]
 
     ## Down sample IMU data to match gnss data
     forward_vel_downsampled = cubic_spline_interpolation(
@@ -217,6 +221,7 @@ def calculate_fused_position(
             [0.0, 0.0, YAW_RATE_NOISE_STD**2.0],
         ]
     )
+
     ## Feed into Filter
     kf = EKF(x, P, R, Q)
     est_x, est_y, est_heading = kf.run_filter(
@@ -224,7 +229,7 @@ def calculate_fused_position(
     )
 
     ### Convert back to LLA
-    est_xyz = np.stack([est_x, est_y, np.zeros_like(est_x)], axis=1)
+    est_xyz = np.array([est_x, est_y, traj_xyz[2, :]])
     est_lla = enu_to_lla(est_xyz, ref_lla)
 
     return est_lla, est_heading
@@ -347,10 +352,10 @@ def calculate_yaw_rate(orientation, gyro_x, gyro_y, gyro_z, time):
 
 def cubic_spline_interpolation(signal, signal_timestamps, desired_timestamps):
     """
-    Perform cubic spline interpolation on a given signal to match it to desired timestamps.
+    Perform cubic spline interpolation on a given one-dimensional signal to match it to desired timestamps.
 
     Parameters:
-    signal (numpy array): N x M array where N is the number of samples and M is the number of dimensions of the signal.
+    signal (numpy array): Array of N signal samples.
     signal_timestamps (numpy array): Array of N timestamps corresponding to the signal samples.
     desired_timestamps (numpy array): Array of K desired timestamps to interpolate the signal to.
 
@@ -361,19 +366,31 @@ def cubic_spline_interpolation(signal, signal_timestamps, desired_timestamps):
     signal = np.array(signal)
     signal_timestamps = np.array(signal_timestamps)
     desired_timestamps = np.array(desired_timestamps)
+    # Check if signal_timestamps is strictly increasing
+    index = check_strictly_increasing(signal_timestamps)
+    if index != -1:
+        raise ValueError(
+            f"`signal_timestamps` must be strictly increasing. Problem at index {index}: "
+            f"{signal_timestamps[index-1]} >= {signal_timestamps[index]}"
+        )
 
-    # Initialize an array to hold the interpolated signal
-    interpolated_signal = np.zeros((len(desired_timestamps), signal.shape[1]))
+    # Create a cubic spline interpolation function for the signal
+    cs = CubicSpline(signal_timestamps, signal)
 
-    # Perform cubic spline interpolation for each dimension of the signal
-    for i in range(signal.shape[1]):
-        # Create a cubic spline interpolation function for the i-th dimension
-        cs = CubicSpline(signal_timestamps, signal[:, i])
-
-        # Interpolate the signal to the desired timestamps
-        interpolated_signal[:, i] = cs(desired_timestamps)
+    # Interpolate the signal to the desired timestamps
+    interpolated_signal = cs(desired_timestamps)
 
     return interpolated_signal
+
+
+def check_strictly_increasing(arr):
+    """
+    Check if an array is strictly increasing and return the index where it fails, if any.
+    """
+    for i in range(1, len(arr)):
+        if arr[i] <= arr[i - 1]:
+            return i
+    return -1
 
 
 ###################### Other ######################
@@ -405,3 +422,24 @@ def grab_most_recent_raw_data_session(
         next_index = furthest_index + 1
 
     return rawData, next_index
+
+
+def remove_duplicate_imu_data(raw_data):
+    """Removes duplicate data points from the raw data based on the `time` attribute.
+
+    Args:
+        raw_data (list): List of IMUData objects.
+
+    Returns:
+        list: List of IMUData objects with duplicates removed.
+    """
+    new_data = []
+    last_time = 0
+
+    for data_point in raw_data:
+        cur_time = convertTimeToEpoch(data_point.time)
+        if cur_time != last_time:
+            new_data.append(data_point)
+            last_time = cur_time
+
+    return new_data
