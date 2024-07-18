@@ -55,9 +55,8 @@ def main(db_path: str, debug: bool = False):
         )
 
     ############################### Main Service Loop ###############################
+    loop_counter = 0
     while 1:
-        print("--------- Service Loop ---------")
-        time.sleep(0.5)
         ########### Purge DB if required ###########
         # TODO: Modify to not be every loop, this can be done much less frequently
         db.purge()
@@ -76,16 +75,14 @@ def main(db_path: str, debug: bool = False):
             )
             continue
 
-        if debug:
-            print("Raw Table Index: ", raw_imu_index)
-            print("Processed Table Index: ", processed_imu_index)
+        # if debug:
+        # print("Raw Table Index: ", raw_imu_index)
+        # print("Processed Table Index: ", processed_imu_index)
 
         index_window_size = raw_imu_index - processed_imu_index
-        print("Index Window Size: ", index_window_size)
 
         ########### Enough Data to Retrieve ###########
         if index_window_size >= MIN_DATA_POINTS:
-            print("Enough Data to Process")
             if debug:
                 now = time.time()
             # Limit the number of data points to process at once
@@ -220,8 +217,8 @@ def main(db_path: str, debug: bool = False):
             # plt.show()
 
         if debug:
-            print("Sleeping")
-            time.sleep(1)
+            print("Loop Counter: ", loop_counter)
+            loop_counter += 1
         else:
             time.sleep(LOOP_SLEEP_TIME)
 

@@ -79,10 +79,6 @@ def process_raw_data(
         imu_converted_time,
         debug,
     )
-    imu_time_status = check_strictly_increasing(imu_converted_time)
-    print("IMU Time Status: ", imu_time_status)
-    gnss_time_status = check_strictly_increasing(gnss_system_time)
-    print("GNSS Time Status: ", gnss_time_status)
 
     fused_position, fused_heading = calculate_fused_position(
         [0, 0, 0],  ### For now orientation is set to 0,0,0
