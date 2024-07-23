@@ -1,6 +1,5 @@
 from typing import List
 import numpy as np
-import time
 from scipy.interpolate import CubicSpline
 
 from sensor_fusion.sensor_fusion_service.telemetryMath import (
@@ -19,11 +18,11 @@ from sensor_fusion.sensor_fusion_service.filter import ExtendedKalmanFilter as E
 
 
 ##### Constants for Kalman Filter #####
-XY_OBS_NOISE_STD = 3
-FORWARD_VELOCITY_NOISE_STD = 1.5
-YAW_RATE_NOISE_STD = 0.15
-INITIAL_YAW_STD = np.pi
-INITIAL_YAW = 0
+XY_OBS_NOISE_STD = 0.9
+FORWARD_VELOCITY_NOISE_STD = 0.3
+YAW_RATE_NOISE_STD = 0.01
+INITIAL_YAW_STD = 0.01
+INITIAL_YAW = 0.01
 #######################################
 
 
@@ -52,7 +51,7 @@ def process_raw_data(
         gyro_x,
         gyro_y,
         gyro_z,
-        time,
+        imu_time,
         temperature,
         imu_session,
         row_id,
@@ -131,7 +130,7 @@ def process_raw_data(
         gyro_y,
         gyro_z,
         stationary,
-        time,
+        imu_time,
         temperature,
         imu_session,
         row_id,
@@ -270,17 +269,17 @@ def calculate_forward_velocity(orientation, initial_vel, acc_x, acc_y, acc_z, ti
     numpy array: Array of forward velocities over time.
     """
     # Convert time from milliseconds to seconds
-    time = np.array(time) / 1000.0
+    time_sec = np.array(time) / 1000.0
     # Calculate the time differences
-    dt = np.diff(time)
+    dt = np.diff(time_sec)
 
     # Initialize velocity array
-    velocity = np.zeros_like(time)
+    velocity = np.zeros_like(time_sec)
     velocity[0] = initial_vel
 
     yaw, pitch, roll = orientation
     # Iterate through each time step to compute velocity
-    for i in range(1, len(time)):
+    for i in range(1, len(time_sec)):
         # Calculate the rotation matrix from the IMU frame to the vehicle frame
         cy = np.cos(yaw)
         sy = np.sin(yaw)

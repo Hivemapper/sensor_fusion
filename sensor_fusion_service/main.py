@@ -132,6 +132,7 @@ def main(db_path: str, debug: bool = False):
 
             if debug:
                 print(f"Processing {len(raw_imu_data)} imu data points")
+                print(f"Processing {len(gnss_data)} gnss data points")
 
             ########### Section for processing Data ###########
             if debug:

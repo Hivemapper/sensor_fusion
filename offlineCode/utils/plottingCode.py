@@ -471,8 +471,8 @@ def create_map_with_headings(
     return html_filename
 
 
-def create_map_with_highlighted_indexes(
-    latitude, longitude, highlight_indices, map_filename="temp", plot_every=1
+def create_map(
+    latitude, longitude, highlight_indices=[], map_filename="temp", plot_every=1
 ):
     """
     Creates a map and plots every 'plot_every' points from the 'latitude' and 'longitude' lists.

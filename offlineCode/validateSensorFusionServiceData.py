@@ -6,9 +6,11 @@ import os
 
 from sensor_fusion.fusion import SqliteInterface, convertTimeToEpoch
 from sensor_fusion.offlineCode.utils.plottingCode import (
+    plot_signal_over_time,
     plot_signals_over_time,
     plot_sensor_data,
     plot_sensor_timestamps,
+    create_map,
 )
 from sensor_fusion.offlineCode.utils.processDBs import (
     validate_db_file,
@@ -98,13 +100,6 @@ def main(file_path):
                 signal1_label="Speed",
                 signal2_label="Stationary",
             )
-
-            # Match the forward velocity to the GNSS data
-            # forward_vel = cubic_spline_interpolation(
-            #     fused_data["forward_velocity"],
-            #     fused_data["time"],
-            #     gnss_data["system_time"],
-            # )
             forward_vel = np.interp(
                 gnss_data["system_time"],
                 fused_data["time"],
@@ -120,6 +115,33 @@ def main(file_path):
                 signal2_label="Processed Speed",
             )
 
+            # Match fused heading to gnss heading
+            fused_heading = np.interp(
+                gnss_data["system_time"],
+                fused_data["time"],
+                fused_data["fused_heading"],
+            )
+            fused_heading = np.rad2deg(fused_heading)
+            fused_heading = [
+                heading_val + 360 if heading_val < 0 else heading_val
+                for heading_val in fused_heading
+            ]
+
+            plot_signals_over_time(
+                gnss_data["system_time"],
+                gnss_data["heading"],
+                fused_heading,
+                downsample_factor=10,
+                signal1_label="Heading",
+                signal2_label="Processed Heading",
+            )
+
+            # plot yaw rates
+            yaw_rate_deg = fused_data["yaw_rate"]
+            plot_signal_over_time(
+                fused_data["time"], yaw_rate_deg, signal_label="Yaw Rate"
+            )
+
             plot_sensor_data(
                 processed_imu["time"],
                 processed_imu["ax"],
@@ -127,7 +149,7 @@ def main(file_path):
                 processed_imu["az"],
                 sensor_name="Processed ACCEL",
                 title="Processed ACCEL Data",
-                downsample_factor=10,
+                downsample_factor=5,
             )
             plot_sensor_data(
                 processed_imu["time"],
@@ -136,7 +158,7 @@ def main(file_path):
                 processed_imu["gz"],
                 sensor_name="Processed GYRO",
                 title="Processed GYRO Data",
-                downsample_factor=10,
+                downsample_factor=1,
             )
             sensor_data = {
                 "gnss": gnss_data["system_time"],
@@ -156,6 +178,17 @@ def main(file_path):
                 gnss_data["system_time"],
                 gnss_data["speed"],
             )
+
+            create_map(
+                fused_data["gnss_lat"],
+                fused_data["gnss_lon"],
+            )
+
+            create_map(
+                fused_data["fused_lat"],
+                fused_data["fused_lon"],
+            )
+
             plt.show()
 
     except Exception as e:
