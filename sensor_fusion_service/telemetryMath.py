@@ -1,10 +1,10 @@
 import math
 import numpy as np
-
 from typing import List
-from filter import butter_lowpass_filter
-from sqliteInterface import IMUData, GNSSData
-from conversions import convertTimeToEpoch
+
+from sensor_fusion.sensor_fusion_service.filter import butter_lowpass_filter
+from sensor_fusion.sensor_fusion_service.sqliteInterface import IMUData, GNSSData
+from sensor_fusion.sensor_fusion_service.conversions import convertTimeToEpoch
 
 
 # from plottingCode import plot_signals_over_time, plot_sensor_data, plot_signal_over_time
@@ -13,6 +13,24 @@ from conversions import convertTimeToEpoch
 WINDOW_SIZE = 1000
 THRESHOLD_ACCEL = 0.00005
 THRESHOLD_GYRO = 0.00005
+
+OFFSETS = {
+    "acc_x": 0.23540433574567557,
+    "acc_y": 0.0009506753661703987,
+    "acc_z": 0.017152832308572785,
+    "gyro_x": 0.05056635014217598,
+    "gyro_y": 0.010372298896629956,
+    "gyro_z": 0.0854693413851669,
+}
+
+SCALING = {
+    "acc_x": 1.0,
+    "acc_y": 1.0,
+    "acc_z": 1.0,
+    "gyro_x": 1.0,
+    "gyro_y": 1.0,
+    "gyro_z": 1.0,
+}
 
 
 def calculate_average_frequency(epoch_times_ms):
@@ -36,7 +54,7 @@ def calculate_average_frequency(epoch_times_ms):
     return average_frequency
 
 
-def extract_smooth_imu_data(imu_data: List[IMUData]):
+def extract_smooth_imu_data(imu_data: List[IMUData], offsets: dict = OFFSETS):
     """
     Extracts accelerometer, gyroscope data, and time differences from the given data.
     Parameters:
@@ -70,6 +88,22 @@ def extract_smooth_imu_data(imu_data: List[IMUData]):
     gyro_x = butter_lowpass_filter(gyro_x, freq)
     gyro_y = butter_lowpass_filter(gyro_y, freq)
     gyro_z = butter_lowpass_filter(gyro_z, freq)
+
+    # Handle Offsets
+    acc_x = np.subtract(acc_x, offsets["acc_x"])
+    acc_y = np.subtract(acc_y, offsets["acc_y"])
+    acc_z = np.subtract(acc_z, offsets["acc_z"])
+    gyro_x = np.subtract(gyro_x, offsets["gyro_x"])
+    gyro_y = np.subtract(gyro_y, offsets["gyro_y"])
+    gyro_z = np.subtract(gyro_z, offsets["gyro_z"])
+
+    # Handle Scaling
+    acc_x = np.multiply(acc_x, SCALING["acc_x"])
+    acc_y = np.multiply(acc_y, SCALING["acc_y"])
+    acc_z = np.multiply(acc_z, SCALING["acc_z"])
+    gyro_x = np.multiply(gyro_x, SCALING["gyro_x"])
+    gyro_y = np.multiply(gyro_y, SCALING["gyro_y"])
+    gyro_z = np.multiply(gyro_z, SCALING["gyro_z"])
 
     return (
         acc_x,

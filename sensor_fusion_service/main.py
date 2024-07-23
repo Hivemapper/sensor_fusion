@@ -54,8 +54,14 @@ def main(db_path: str, debug: bool = False):
             TableName.IMU_PROCESSED_TABLE.value
         )
 
+    ### Setup Variables needed between loops
+    state_values = {
+        "current_velocity": 0.0,
+    }
+
     ############################### Main Service Loop ###############################
-    loop_counter = 0
+    if debug:
+        loop_counter = 0
     while 1:
         ########### Purge DB if required ###########
         # TODO: Modify to not be every loop, this can be done much less frequently
@@ -139,11 +145,11 @@ def main(db_path: str, debug: bool = False):
                     gyro_y,
                     gyro_z,
                     imu_time,
-                ) = process_raw_data(gnss_data, raw_imu_data, debug)
+                ) = process_raw_data(gnss_data, raw_imu_data, state_values, debug)
             else:
                 try:
                     processed_imu_data, fused_position_data = process_raw_data(
-                        gnss_data, raw_imu_data
+                        gnss_data, raw_imu_data, state_values
                     )
                 except Exception as e:
                     db.service_log_msg("Processing IMU Data", str(e))

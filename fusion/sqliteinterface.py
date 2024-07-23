@@ -124,6 +124,32 @@ class GNSSData:
         self.session = session
 
 
+class FusedPositionData:
+    def __init__(
+        self,
+        id,
+        time,
+        gnss_lat,
+        gnss_lon,
+        fused_lat,
+        fused_lon,
+        fused_heading,
+        forward_velocity,
+        yaw_rate,
+        session,
+    ):
+        self.id = id
+        self.time = time
+        self.gnss_lat = gnss_lat
+        self.gnss_lon = gnss_lon
+        self.fused_lat = fused_lat
+        self.fused_lon = fused_lon
+        self.fused_heading = fused_heading
+        self.forward_velocity = forward_velocity
+        self.yaw_rate = yaw_rate
+        self.session = session
+
+
 class SqliteInterface:
     def __init__(self, data_logger_path: str = DATA_LOGGER_PATH) -> None:
         self.connection = sqlite3.connect(data_logger_path)
@@ -234,6 +260,38 @@ class SqliteInterface:
                 row[11],
             )
             for row in results
+        ]
+        return results
+
+    def queryAllFusedPosition(self, order: str = "ASC"):
+        """
+        Queries the whole fused_position table and sorts by row ID.
+        Columns queried: id, time, gnss_lat, gnss_lon, fused_lat, fused_lon, fused_heading, forward_velocity, yaw_rate, session.
+        Args:
+            order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'ASC'.
+        Returns:
+            list: A list of FusedPositionData objects containing the fused position data.
+        """
+        query = f"""
+                    SELECT id, time, gnss_lat, gnss_lon, fused_lat, fused_lon, fused_heading, forward_velocity, yaw_rate, session
+                    FROM fused_position 
+                    ORDER BY id {order}
+                """
+        rows = self.cursor.execute(query).fetchall()
+        results = [
+            FusedPositionData(
+                row[0],  # id
+                row[1],  # time
+                row[2],  # gnss_lat
+                row[3],  # gnss_lon
+                row[4],  # fused_lat
+                row[5],  # fused_lon
+                row[6],  # fused_heading
+                row[7],  # forward_velocity
+                row[8],  # yaw_rate
+                row[9],  # session
+            )
+            for row in rows
         ]
         return results
 

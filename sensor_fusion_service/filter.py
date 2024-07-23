@@ -153,7 +153,7 @@ def butter_lowpass_filter(data, fs, cutoff=1, order=2):
     normal_cutoff = cutoff / nyq  # Normalize cutoff frequency
     b, a = butter(order, normal_cutoff, btype="low", analog=False)
     y = filtfilt(b, a, data)
-    return y
+    return np.array(y)
 
 
 ############ Helper Functions ############

@@ -1,15 +1,21 @@
 from typing import List
 import numpy as np
+import time
 from scipy.interpolate import CubicSpline
 
-from telemetryMath import (
+from sensor_fusion.sensor_fusion_service.telemetryMath import (
     extract_smooth_imu_data,
     extract_gnss_data,
     calculate_stationary_status,
 )
-from conversions import lists_to_dicts, lla_to_enu, enu_to_lla, convertTimeToEpoch
-from sqliteInterface import IMUData, GNSSData
-from filter import ExtendedKalmanFilter as EKF
+from sensor_fusion.sensor_fusion_service.conversions import (
+    lists_to_dicts,
+    lla_to_enu,
+    enu_to_lla,
+    convertTimeToEpoch,
+)
+from sensor_fusion.sensor_fusion_service.sqliteInterface import IMUData, GNSSData
+from sensor_fusion.sensor_fusion_service.filter import ExtendedKalmanFilter as EKF
 
 
 ##### Constants for Kalman Filter #####
@@ -25,7 +31,10 @@ INITIAL_YAW = 0
 
 
 def process_raw_data(
-    gnss_data: List[GNSSData], imu_data: List[IMUData], debug: bool = False
+    gnss_data: List[GNSSData],
+    imu_data: List[IMUData],
+    state_values: dict,
+    debug: bool = False,
 ):
     """
     This function processes the raw IMU data and returns the processed data.
@@ -80,8 +89,9 @@ def process_raw_data(
         debug,
     )
 
-    fused_position, fused_heading = calculate_fused_position(
-        [0, 0, 0],  ### For now orientation is set to 0,0,0
+    fused_position, fused_heading, forward_vel, yaw_rates = calculate_fused_position(
+        state_values,
+        [0.0, 0.0, 0.0],  ### For now orientation is set to 0,0,0
         acc_x,
         acc_y,
         acc_z,
@@ -95,8 +105,8 @@ def process_raw_data(
         gnss_system_time,
     )
 
-    fused_lons = fused_position[:, 0]
-    fused_lats = fused_position[:, 1]
+    fused_lons = fused_position[0, :]
+    fused_lats = fused_position[1, :]
 
     ########### Package Processed Data ###########
     processed_imu_keys = [
@@ -133,6 +143,8 @@ def process_raw_data(
         "fused_lat",
         "fused_lon",
         "fused_heading",
+        "forward_velocity",
+        "yaw_rate",
         "time",
         "session",
     ]
@@ -143,6 +155,8 @@ def process_raw_data(
         fused_lats,
         fused_lons,
         fused_heading,
+        forward_vel,
+        yaw_rates,
         gnss_system_time,
         gnss_session,
     )
@@ -167,6 +181,7 @@ def process_raw_data(
 
 
 def calculate_fused_position(
+    state_values,
     orientation,
     acc_x,
     acc_y,
@@ -181,9 +196,11 @@ def calculate_fused_position(
     gnss_time,
 ):
     forward_velocity = calculate_forward_velocity(
-        orientation, acc_x, acc_y, acc_z, imu_time
+        orientation, state_values["current_velocity"], acc_x, acc_y, acc_z, imu_time
     )
-    yaw_rates = calculate_yaw_rate(orientation, gyro_x, gyro_y, gyro_z, imu_time)
+    # Update the state values with the current velocity
+    state_values["current_velocity"] = forward_velocity[-1]
+    yaw_rates = calculate_yaw_rate(orientation, gyro_x, gyro_y, gyro_z)
 
     # convert gnss position to enu coordinate frame
     points_lla = np.array([lon, lat, alt])
@@ -193,10 +210,13 @@ def calculate_fused_position(
     pos_y = traj_xyz[1, :]
 
     ## Down sample IMU data to match gnss data
-    forward_vel_downsampled = cubic_spline_interpolation(
-        forward_velocity, imu_time, gnss_time
-    )
-    yaw_rate_downsampled = cubic_spline_interpolation(yaw_rates, imu_time, gnss_time)
+    # forward_vel_downsampled = cubic_spline_interpolation(
+    #     forward_velocity, imu_time, gnss_time
+    # )
+    # yaw_rate_downsampled = cubic_spline_interpolation(yaw_rates, imu_time, gnss_time)
+
+    forward_vel_downsampled = np.interp(gnss_time, imu_time, forward_velocity)
+    yaw_rate_downsampled = np.interp(gnss_time, imu_time, yaw_rates)
 
     x = np.array([traj_xyz[0][0], traj_xyz[0][1], INITIAL_YAW])
 
@@ -226,15 +246,16 @@ def calculate_fused_position(
 
     ### Convert back to LLA
     est_xyz = np.array([est_x, est_y, traj_xyz[2, :]])
+    # est_xyz = np.array([pos_x, pos_y, traj_xyz[2, :]])
     est_lla = enu_to_lla(est_xyz, ref_lla)
 
-    return est_lla, est_heading
+    return est_lla, est_heading, forward_vel_downsampled, yaw_rate_downsampled
 
 
 ###################### Math for Kalman Filter ######################
 
 
-def calculate_forward_velocity(orientation, acc_x, acc_y, acc_z, time):
+def calculate_forward_velocity(orientation, initial_vel, acc_x, acc_y, acc_z, time):
     """
     Calculate the forward velocity of a vehicle given its orientation and accelerations over time.
 
@@ -248,11 +269,14 @@ def calculate_forward_velocity(orientation, acc_x, acc_y, acc_z, time):
     Returns:
     numpy array: Array of forward velocities over time.
     """
+    # Convert time from milliseconds to seconds
+    time = np.array(time) / 1000.0
     # Calculate the time differences
     dt = np.diff(time)
 
     # Initialize velocity array
     velocity = np.zeros_like(time)
+    velocity[0] = initial_vel
 
     yaw, pitch, roll = orientation
     # Iterate through each time step to compute velocity
@@ -286,14 +310,61 @@ def calculate_forward_velocity(orientation, acc_x, acc_y, acc_z, time):
         # Integrate acceleration to get velocity
         velocity[i] = velocity[i - 1] + acc_forward * dt[i - 1]
 
-    # Deals with the first velocity not being calculated assign it the same alue as the first calcualted velocity value
-    if len(velocity) > 1:
-        velocity[0] = velocity[1]
+        # TODO:HARDCODED LIMITS, hope to remove this in the future
+        # Limit the velocity to 35 m/s
+        if velocity[i] > 35.0:
+            velocity[i] = 35.0
+
+        # limit the velocity to 0 m/s
+        if velocity[i] < 0.0:
+            velocity[i] = 0.0
 
     return velocity
 
 
-def calculate_yaw_rate(orientation, gyro_x, gyro_y, gyro_z, time):
+# def calculate_forward_velocity(orientation, initial_vel, acc_x, acc_y, acc_z, time):
+#     """
+#     Calculate the forward velocity of a vehicle given its x-axis accelerations over time.
+
+#     Parameters:
+#     acc_x (numpy array): Array of x-axis accelerations over time.
+#     time (numpy array): Array of time stamps in milliseconds epoch.
+
+#     Returns:
+#     numpy array: Array of forward velocities over time.
+#     """
+#     # Convert time from milliseconds to seconds
+#     time = np.array(time) / 1000.0
+
+#     # Calculate the time differences in seconds
+#     dt = np.diff(time)
+
+#     # Initialize velocity array
+#     velocity = np.zeros_like(time)
+#     velocity[0] = initial_vel
+
+#     # Iterate through each time step to compute velocity
+#     for i in range(1, len(time)):
+#         # Forward acceleration is the x-component
+#         acc_forward = acc_x[i]
+
+#         # Integrate acceleration to get velocity
+
+#         velocity[i] = velocity[i - 1] + acc_forward * dt[i - 1]
+
+#         # TODO:HARDCODED LIMITS, hope to remove this in the future
+#         # Limit the velocity to 35 m/s
+#         if velocity[i] > 35.0:
+#             velocity[i] = 35.0
+
+#         # limit the velocity to 0 m/s
+#         if velocity[i] < 0.0:
+#             velocity[i] = 0.0
+
+#     return velocity
+
+
+def calculate_yaw_rate(orientation, gyro_x, gyro_y, gyro_z):
     """
     Calculate the yaw rate of a vehicle given its orientation and gyroscope readings over time.
 
@@ -308,40 +379,34 @@ def calculate_yaw_rate(orientation, gyro_x, gyro_y, gyro_z, time):
     numpy array: Array of yaw rates over time.
     """
     # Initialize yaw rate array
-    yaw_rate = np.zeros_like(time)
+    yaw_rate = np.zeros_like(gyro_x)
 
     yaw, pitch, roll = orientation
+    # Calculate the rotation matrix from the IMU frame to the vehicle frame
+    cy = np.cos(yaw)
+    sy = np.sin(yaw)
+    cp = np.cos(pitch)
+    sp = np.sin(pitch)
+    cr = np.cos(roll)
+    sr = np.sin(roll)
+
+    # Rotation matrix (IMU to vehicle frame)
+    R = np.array(
+        [
+            [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
+            [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
+            [-sp, cp * sr, cp * cr],
+        ]
+    )
     # Iterate through each time step to compute yaw rate
-    for i in range(len(time)):
-        # Calculate the rotation matrix from the IMU frame to the vehicle frame
-        cy = np.cos(yaw)
-        sy = np.sin(yaw)
-        cp = np.cos(pitch)
-        sp = np.sin(pitch)
-        cr = np.cos(roll)
-        sr = np.sin(roll)
-
-        # Rotation matrix (IMU to vehicle frame)
-        R = np.array(
-            [
-                [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
-                [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
-                [-sp, cp * sr, cp * cr],
-            ]
-        )
-
+    for i in range(len(gyro_x)):
         # Gyroscope readings in IMU frame
         gyro_imu = np.array([gyro_x[i], gyro_y[i], gyro_z[i]])
-
         # Transform gyroscope readings to the vehicle frame
         gyro_vehicle = np.dot(R, gyro_imu)
 
         # Extract the yaw rate from the transformed gyroscope readings
         yaw_rate[i] = gyro_vehicle[2]  # The z-component in the vehicle frame
-
-    # Deals with the first yaw rate not being calculated assign it the same alue as the first calcualted yaw rate value
-    if len(yaw_rate) > 1:
-        yaw_rate[0] = yaw_rate[1]
 
     return yaw_rate
 

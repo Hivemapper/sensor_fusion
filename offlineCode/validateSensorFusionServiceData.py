@@ -15,6 +15,8 @@ from sensor_fusion.offlineCode.utils.processDBs import (
     process_db_file_for_individual_drives,
     aggregate_data,
 )
+from sensor_fusion.sensor_fusion_service.processing import cubic_spline_interpolation
+from get_imu_offset import get_imu_offsets
 
 
 def check_table_copy(raw_data, processed_data):
@@ -41,11 +43,6 @@ def main(file_path):
     _, camera_type = validate_db_file(file_path)
     print(f"Validation Done in {time.time()-time_now} seconds")
     try:
-        db_interface = SqliteInterface(file_path)
-        raw_imu = db_interface.get_all_rows_as_dicts("imu")
-        processed_imu = db_interface.get_all_rows_as_dicts("imu_processed")
-        print(f"Copied Table correctly: {check_table_copy(raw_imu, processed_imu)}")
-
         useable_sessions = process_db_file_for_individual_drives(file_path, camera_type)
         for session in useable_sessions:
             raw_imu = aggregate_data(useable_sessions[session]["imu_data"])
@@ -53,12 +50,21 @@ def main(file_path):
                 useable_sessions[session]["imu_processed_data"]
             )
             gnss_data = aggregate_data(useable_sessions[session]["gnss_data"])
+            fused_data = aggregate_data(useable_sessions[session]["fused_data"])
+            ## Filter out duplicates
+            fused_data = remove_duplicate_data(fused_data, "time")
             raw_imu_len = len(raw_imu)
             processed_imu_len = len(processed_imu)
             gnss_len = len(gnss_data)
-            if raw_imu_len == 0 or processed_imu_len == 0 or gnss_len == 0:
+            fused_len = len(fused_data)
+            if (
+                raw_imu_len == 0
+                or processed_imu_len == 0
+                or gnss_len == 0
+                or fused_len == 0
+            ):
                 print(
-                    f"Session: {session} -> Missing Data -- gnss: {gnss_len} raw_imu: {raw_imu_len} processed_imu: {processed_imu_len}"
+                    f"Session: {session} -> Missing Data -- gnss: {gnss_len} raw_imu: {raw_imu_len} processed_imu: {processed_imu_len} fused: {fused_len}"
                 )
                 continue
 
@@ -93,6 +99,27 @@ def main(file_path):
                 signal2_label="Stationary",
             )
 
+            # Match the forward velocity to the GNSS data
+            # forward_vel = cubic_spline_interpolation(
+            #     fused_data["forward_velocity"],
+            #     fused_data["time"],
+            #     gnss_data["system_time"],
+            # )
+            forward_vel = np.interp(
+                gnss_data["system_time"],
+                fused_data["time"],
+                fused_data["forward_velocity"],
+            )
+
+            plot_signals_over_time(
+                gnss_data["system_time"],
+                gnss_data["speed"],
+                forward_vel,
+                downsample_factor=1,
+                signal1_label="Speed",
+                signal2_label="Processed Speed",
+            )
+
             plot_sensor_data(
                 processed_imu["time"],
                 processed_imu["ax"],
@@ -118,29 +145,92 @@ def main(file_path):
             }
             plot_sensor_timestamps(sensor_data)
 
+            get_imu_offsets(
+                processed_imu["ax"],
+                processed_imu["ay"],
+                processed_imu["az"],
+                processed_imu["gx"],
+                processed_imu["gy"],
+                processed_imu["gz"],
+                processed_imu["time"],
+                gnss_data["system_time"],
+                gnss_data["speed"],
+            )
             plt.show()
 
     except Exception as e:
         print(f"Error: {e}")
 
 
+def remove_duplicate_data(aggregated_data, filter_column):
+    """Removes duplicate data points from the aggregated data based on the specified filter column.
+
+    Args:
+        aggregated_data (dict): Dictionary with keys as attribute names and values as lists of attribute values.
+        filter_column (str): The column name to filter on for duplicates.
+
+    Returns:
+        dict: Dictionary with duplicates removed based on the filter column.
+    """
+    if filter_column not in aggregated_data:
+        raise ValueError(f"Column {filter_column} not found in the aggregated data")
+
+    new_data = {key: [] for key in aggregated_data.keys()}
+    seen_values = set()
+    column_values = aggregated_data[filter_column]
+
+    for i, value in enumerate(column_values):
+        if value not in seen_values:
+            seen_values.add(value)
+            for key in aggregated_data.keys():
+                new_data[key].append(aggregated_data[key][i])
+
+    return new_data
+
+
+def valid_dir(path):
+    """Check if the provided path is a valid directory."""
+    if os.path.isdir(path):
+        return path
+    else:
+        raise argparse.ArgumentTypeError(f"'{path}' is not a valid directory.")
+
+
+def valid_file(path):
+    """Check if the provided path is a valid file."""
+    if os.path.isfile(path):
+        return path
+    else:
+        raise argparse.ArgumentTypeError(f"'{path}' is not a valid file.")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process a local path.")
-    parser.add_argument("path", type=str, help="The local path to process")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        "--dirpath", type=valid_dir, help="The local directory path to process"
+    )
+    group.add_argument(
+        "--filepath", type=valid_file, help="The local file path to process"
+    )
     args = parser.parse_args()
-    file_path = args.path
-    # Check if the path exists
-    for user in os.listdir(file_path):
-        if ".DS_Store" in user:
-            continue
-        # print(f"Processing {user}")
-        user_path = os.path.join(file_path, user)
-        for possible_dir in os.listdir(user_path):
-            possible_dir_path = os.path.join(user_path, possible_dir)
-            if possible_dir == "recovered" and os.path.isdir(possible_dir_path):
-                # print(f"Processing {possible_dir_path}")
-                for recovered_file in os.listdir(possible_dir_path):
-                    db_file_path = os.path.join(possible_dir_path, recovered_file)
-                    if recovered_file.endswith(".db"):
-                        print(f"Processing {db_file_path}")
-                        main(db_file_path)
+
+    if args.dirpath:
+        file_path = args.path
+        # Check if the path exists
+        for user in os.listdir(file_path):
+            if ".DS_Store" in user:
+                continue
+            user_path = os.path.join(file_path, user)
+            for possible_dir in os.listdir(user_path):
+                possible_dir_path = os.path.join(user_path, possible_dir)
+                if possible_dir == "recovered" and os.path.isdir(possible_dir_path):
+                    for recovered_file in os.listdir(possible_dir_path):
+                        db_file_path = os.path.join(possible_dir_path, recovered_file)
+                        if recovered_file.endswith(".db"):
+                            print(f"Processing {db_file_path}")
+                            main(db_file_path)
+    else:
+        file_path = args.filepath
+        print(f"Processing {file_path}")
+        main(file_path)

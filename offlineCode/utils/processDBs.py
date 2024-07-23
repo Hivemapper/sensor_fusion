@@ -132,6 +132,10 @@ def process_db_file_for_individual_drives(filename, camera_type):
             imu_processed_data = sql_db.queryAllProcessedImu()
             if len(imu_processed_data) == 0:
                 print("No processed IMU data found")
+            # Get fused position data
+            fused_position_data = sql_db.queryAllFusedPosition()
+            if len(fused_position_data) == 0:
+                print("No fused position data found")
         # get unique session ids for all three
         gnss_sessions = set([d.session for d in gnss_data])
         imu_sessions = set([d.session for d in imu_data])
@@ -160,6 +164,9 @@ def process_db_file_for_individual_drives(filename, camera_type):
                 imu_processed_data_session = [
                     d for d in imu_processed_data if d.session == session
                 ]
+                fused_position_data_session = [
+                    d for d in fused_position_data if d.session == session
+                ]
             # ensure enough data to be useful
             if (
                 len(gnss_data_session) < SESSION_DATA_MINIMUM
@@ -178,6 +185,7 @@ def process_db_file_for_individual_drives(filename, camera_type):
                     "imu_data": imu_data_session,
                     "imu_processed_data": imu_processed_data_session,
                     "mag_data": mag_data_session,
+                    "fused_data": fused_position_data_session,
                 }
             else:
                 print(

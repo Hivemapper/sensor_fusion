@@ -214,6 +214,8 @@ class SqliteInterface:
                         fused_lat REAL NOT NULL,
                         fused_lon REAL NOT NULL,
                         fused_heading REAL NOT NULL,
+                        forward_velocity REAL NOT NULL,
+                        yaw_rate REAL NOT NULL,
                         session TEXT NOT NULL DEFAULT ''
             );
             """
@@ -301,8 +303,8 @@ class SqliteInterface:
         """
         try:
             insert_query = """
-                INSERT INTO fused_position (time, gnss_lat, gnss_lon, fused_lat, fused_lon, fused_heading, session)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO fused_position (time, gnss_lat, gnss_lon, fused_lat, fused_lon, fused_heading, forward_velocity, yaw_rate, session)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
             # Prepare data for insertion
             data_to_insert = [
@@ -313,6 +315,8 @@ class SqliteInterface:
                     entry["fused_lat"],
                     entry["fused_lon"],
                     entry["fused_heading"],
+                    entry["forward_velocity"],
+                    entry["yaw_rate"],
                     entry["session"],
                 )
                 for entry in fused_position_data
