@@ -28,6 +28,10 @@ def get_imu_offsets(
         i for i, speed_val in enumerate(speed) if speed_val < GNSS_LOW_SPEED_THRESHOLD
     ]
 
+    if len(zero_speed_indices) < 20:
+        print(f"No enough zero speed data found: {len(zero_speed_indices)}")
+        return
+
     acc_x_down_zero_speed, acc_y_down_zero_speed, acc_z_down_zero_speed = [], [], []
     gyro_x_down_zero_speed, gyro_y_down_zero_speed, gyro_z_down_zero_speed = [], [], []
     for i in zero_speed_indices:
