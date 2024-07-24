@@ -1,29 +1,11 @@
 import os
 from multiprocessing import Process, Queue
-import sys
 
-sys.path.insert(
-    0, "/Users/rogerberman/hivemapper/sensor-fusion"
-)  # Add the project root to the Python path
-import numpy as np
-from fusion import (
+from sensor_fusion.fusion import (
     SqliteInterface,
-    extractAndSmoothImuData,
-    extractAndSmoothMagData,
-    extractGNSSData,
-    calculateHeading,
-    calibrate_mag,
-    getCleanGNSSHeading,
-    getDashcamToVehicleHeadingOffset,
-    convertTimeToEpoch,
-    convertEpochToTime,
-    GNSS_LOW_SPEED_THRESHOLD,
-    HEADING_DIFF_MAGNETOMETER_FLIP_THRESHOLD,
-    GNSS_HEADING_ACCURACY_THRESHOLD,
-    ASC,
 )
 
-SESSION_DATA_MINIMUM = 8 * 60 * 5  # 5 minutes of data at 8 Hz
+SESSION_DATA_MINIMUM = 500  # number of points
 
 
 def validate_db_file(file_path):
@@ -140,14 +122,23 @@ def process_db_file_for_individual_drives(filename, camera_type):
     print(f"--- Loading data from {filename} ---")
     print(f"Camera type: {camera_type}")
     sql_db = SqliteInterface(filename)
+    imu_processed = False
+    fused_table = False
     if camera_type == "hdcs":
         gnss_data = sql_db.queryAllGnss()
         imu_data = sql_db.queryAllImu()
         mag_data = sql_db.queryAllMagnetometer()
         if sql_db.table_exists("imu_processed"):
+            imu_processed = True
             imu_processed_data = sql_db.queryAllProcessedImu()
             if len(imu_processed_data) == 0:
                 print("No processed IMU data found")
+            # Get fused position data
+        if sql_db.table_exists("fused_position"):
+            fused_table = True
+            fused_position_data = sql_db.queryAllFusedPosition()
+            if len(fused_position_data) == 0:
+                print("No fused position data found")
         # get unique session ids for all three
         gnss_sessions = set([d.session for d in gnss_data])
         imu_sessions = set([d.session for d in imu_data])
@@ -172,9 +163,13 @@ def process_db_file_for_individual_drives(filename, camera_type):
             gnss_data_session = [d for d in gnss_data if d.session == session]
             imu_data_session = [d for d in imu_data if d.session == session]
             mag_data_session = [d for d in mag_data if d.session == session]
-            if sql_db.table_exists("imu_processed"):
+            if imu_processed:
                 imu_processed_data_session = [
                     d for d in imu_processed_data if d.session == session
+                ]
+            if fused_table:
+                fused_position_data_session = [
+                    d for d in fused_position_data if d.session == session
                 ]
             # ensure enough data to be useful
             if (
@@ -184,15 +179,36 @@ def process_db_file_for_individual_drives(filename, camera_type):
             ):
                 print(f"Not enough data to process for session {session}")
                 continue
-            print(
-                f"Session: {session}, GNSS data: {len(gnss_data_session)}, IMU data: {len(imu_data_session)}, Mag data: {len(mag_data_session)}"
-            )
-            useable_sessions[session] = {
-                "gnss_data": gnss_data_session,
-                "imu_data": imu_data_session,
-                "imu_processed_data": imu_processed_data_session,
-                "mag_data": mag_data_session,
-            }
+
+            if imu_processed:
+                print(
+                    f"  Session: {session}, gnss: {len(gnss_data_session)}, raw_imu: {len(imu_data_session)}, processed_imu: {len(imu_processed_data_session)}, mag: {len(mag_data_session)}"
+                )
+                useable_sessions[session] = {
+                    "gnss_data": gnss_data_session,
+                    "imu_data": imu_data_session,
+                    "imu_processed_data": imu_processed_data_session,
+                    "mag_data": mag_data_session,
+                }
+            elif fused_table:
+                print(
+                    f"  Session: {session}, gnss: {len(gnss_data_session)}, raw_imu: {len(imu_data_session)}, mag: {len(mag_data_session)}, fused: {len(fused_position_data_session)}"
+                )
+                useable_sessions[session] = {
+                    "gnss_data": gnss_data_session,
+                    "imu_data": imu_data_session,
+                    "mag_data": mag_data_session,
+                    "fused_data": fused_position_data_session,
+                }
+            else:
+                print(
+                    f"  Session: {session}, gnss: {len(gnss_data_session)}, raw_imu: {len(imu_data_session)}, mag: {len(mag_data_session)}"
+                )
+                useable_sessions[session] = {
+                    "gnss_data": gnss_data_session,
+                    "imu_data": imu_data_session,
+                    "mag_data": mag_data_session,
+                }
     # HDC route
     else:
         gnss_data = sql_db.queryAllGnss()
@@ -231,11 +247,68 @@ def process_db_file_for_individual_drives(filename, camera_type):
                 print(f"Not enough data to process for session {session}")
                 continue
             print(
-                f"Session: {session}, GNSS data: {len(gnss_data_session)}, IMU data: {len(imu_data_session)}"
+                f"Session: {session}, gnss data: {len(gnss_data_session)}, IMU data: {len(imu_data_session)}"
             )
             useable_sessions[session] = {
                 "gnss_data": gnss_data_session,
                 "imu_data": imu_data_session,
                 "imu_processed_data": imu_processed_data_session,
             }
+
+    print(f"--- Finished loading data from {filename} ---")
     return useable_sessions
+
+
+### Helper Functions
+def aggregate_data(data_list):
+    """
+    Aggregates data from a list of IMUData or ProcessedIMUData objects into a dictionary.
+    Args:
+        data_list (list): A list of IMUData or ProcessedIMUData objects.
+    Returns:
+        dict: A dictionary with keys as attribute names and values as lists of attribute values.
+    """
+    if not data_list:
+        return {}
+
+    result = {}
+    first_item = data_list[0]
+
+    # Initialize dictionary keys with empty lists
+    for key in first_item.__dict__.keys():
+        result[key] = []
+
+    # Populate the dictionary with values from each object
+    for item in data_list:
+        for key, value in item.__dict__.items():
+            result[key].append(value)
+
+    return result
+
+
+def transform_list_of_dicts(list_of_dicts):
+    """
+    Transforms a list of dictionaries into a dictionary of lists, where each key from the dictionaries
+    maps to a list of values from the original dictionaries.
+
+    Parameters:
+    list_of_dicts (list): A list of dictionaries with the same keys.
+
+    Returns:
+    dict: A dictionary where each key maps to a list of values from the original dictionaries.
+    """
+    if not list_of_dicts:
+        return {}
+
+    # Extract all keys from the dictionaries
+    keys = list_of_dicts[0].keys()
+
+    # Initialize a dictionary where each key maps to an empty list
+    transformed_dict = {key: [] for key in keys}
+
+    # Iterate through the list of dictionaries
+    for dictionary in list_of_dicts:
+        for key in dictionary:
+            transformed_dict[key].append(dictionary[key])
+
+    return transformed_dict

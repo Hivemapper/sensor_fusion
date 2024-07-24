@@ -1,6 +1,9 @@
 import sys
 import os
-from processDBs import validate_db_file, process_db_file_for_individual_drives
+from offlineCode.utils.processDBs import (
+    validate_db_file,
+    process_db_file_for_individual_drives,
+)
 
 sys.path.insert(0, "/data/sensorExp")  # Add the project root to the Python path
 from fusion import (
@@ -9,7 +12,7 @@ from fusion import (
     extractGNSSData,
     calculate_rates_and_counts,
 )
-from plottingCode import (
+from offlineCode.utils.plottingCode import (
     plot_signal_over_time,
     plot_signals_over_time,
     plot_rate_counts,

@@ -1,7 +1,6 @@
 from .sqliteinterface import (
     convertTimeToEpoch,
     convertEpochToTime,
-    aggregate_data,
     SqliteInterface,
     ASC,
 )

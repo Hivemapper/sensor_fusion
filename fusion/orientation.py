@@ -20,12 +20,7 @@ from .utils import (
 )
 from .ellipsoid_fit import calibrate_mag
 
-import sys
-
-sys.path.insert(
-    0, "/Users/rogerberman/sensor-fusion/testingScripts"
-)  # Add the project root to the Python path
-from testingScripts.plottingCode import (
+from sensor_fusion.offlineCode.utils.plottingCode import (
     plot_signal_over_time,
     plot_signals_over_time,
     plot_sensor_data,

@@ -44,32 +44,6 @@ def convertEpochToTime(epoch_ms):
     return datetime_obj.strftime("%Y-%m-%d %H:%M:%S.%f")
 
 
-def aggregate_data(data_list):
-    """
-    Aggregates data from a list of IMUData or ProcessedIMUData objects into a dictionary.
-    Args:
-        data_list (list): A list of IMUData or ProcessedIMUData objects.
-    Returns:
-        dict: A dictionary with keys as attribute names and values as lists of attribute values.
-    """
-    if not data_list:
-        return {}
-
-    result = {}
-    first_item = data_list[0]
-
-    # Initialize dictionary keys with empty lists
-    for key in first_item.__dict__.keys():
-        result[key] = []
-
-    # Populate the dictionary with values from each object
-    for item in data_list:
-        for key, value in item.__dict__.items():
-            result[key].append(value)
-
-    return result
-
-
 class IMUData:
     def __init__(self, ax, ay, az, gx, gy, gz, time, temperature, session):
         self.ax = ax
@@ -147,6 +121,32 @@ class GNSSData:
         self.system_time = system_time
         self.time = time
         self.time_resolved = time_resolved
+        self.session = session
+
+
+class FusedPositionData:
+    def __init__(
+        self,
+        id,
+        time,
+        gnss_lat,
+        gnss_lon,
+        fused_lat,
+        fused_lon,
+        fused_heading,
+        forward_velocity,
+        yaw_rate,
+        session,
+    ):
+        self.id = id
+        self.time = time
+        self.gnss_lat = gnss_lat
+        self.gnss_lon = gnss_lon
+        self.fused_lat = fused_lat
+        self.fused_lon = fused_lon
+        self.fused_heading = fused_heading
+        self.forward_velocity = forward_velocity
+        self.yaw_rate = yaw_rate
         self.session = session
 
 
@@ -260,6 +260,38 @@ class SqliteInterface:
                 row[11],
             )
             for row in results
+        ]
+        return results
+
+    def queryAllFusedPosition(self, order: str = "ASC"):
+        """
+        Queries the whole fused_position table and sorts by row ID.
+        Columns queried: id, time, gnss_lat, gnss_lon, fused_lat, fused_lon, fused_heading, forward_velocity, yaw_rate, session.
+        Args:
+            order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'ASC'.
+        Returns:
+            list: A list of FusedPositionData objects containing the fused position data.
+        """
+        query = f"""
+                    SELECT id, time, gnss_lat, gnss_lon, fused_lat, fused_lon, fused_heading, forward_velocity, yaw_rate, session
+                    FROM fused_position 
+                    ORDER BY id {order}
+                """
+        rows = self.cursor.execute(query).fetchall()
+        results = [
+            FusedPositionData(
+                row[0],  # id
+                row[1],  # time
+                row[2],  # gnss_lat
+                row[3],  # gnss_lon
+                row[4],  # fused_lat
+                row[5],  # fused_lon
+                row[6],  # fused_heading
+                row[7],  # forward_velocity
+                row[8],  # yaw_rate
+                row[9],  # session
+            )
+            for row in rows
         ]
         return results
 

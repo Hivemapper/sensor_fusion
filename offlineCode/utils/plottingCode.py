@@ -252,11 +252,11 @@ def plot_sensor_data_classified(
 
     # Plot x-axis data
     ax1.plot(time_series, x_series, color="r")
-    ax1.scatter(
+    ax1.plot(
         time_series,
         x_zeros_and_ones,
         color="black",
-        s=0.5,
+        # s=0.5,
         label="Threshold Output",
         zorder=10,
     )
@@ -268,11 +268,11 @@ def plot_sensor_data_classified(
 
     # Plot y-axis data
     ax2.plot(time_series, y_series, color="g")
-    ax2.scatter(
+    ax2.plot(
         time_series,
         y_zeros_and_ones,
         color="black",
-        s=0.5,
+        # s=0.5,
         label="Threshold Output",
         zorder=10,
     )
@@ -284,11 +284,11 @@ def plot_sensor_data_classified(
 
     # Plot z-axis data
     ax3.plot(time_series, z_series, color="b")
-    ax3.scatter(
+    ax3.plot(
         time_series,
         z_zeros_and_ones,
         color="black",
-        s=0.5,
+        # s=0.5,
         label="Threshold Output",
         zorder=10,
     )
@@ -371,6 +371,39 @@ def plot_rate_counts(rate_counts, title, save_path=None):
         plt.close()
 
 
+def plot_sensor_timestamps(sensor_data):
+    """
+    Plots sensor timestamps to visualize gaps in measurements.
+
+    Args:
+    sensor_data (dict): Dictionary where keys are sensor names and values are lists of timestamps in epoch milliseconds.
+    """
+    # Convert epoch milliseconds to seconds for plotting
+    sensor_data_in_seconds = {
+        sensor: [ts / 1000 for ts in timestamps]
+        for sensor, timestamps in sensor_data.items()
+    }
+
+    # Create the plot
+    plt.figure(figsize=(12, 8))
+
+    # Plot each sensor's timestamps
+    num_sensors = len(sensor_data_in_seconds)
+    spacing = 0.01  # Adjust this value to bring lines closer together
+    for i, (sensor, timestamps) in enumerate(sensor_data_in_seconds.items()):
+        plt.scatter(timestamps, [i * spacing] * len(timestamps), label=sensor, s=20)
+
+    # Customize the plot
+    plt.xlabel("Time (seconds since epoch)")
+    plt.ylabel("Sensors")
+    plt.yticks([i * spacing for i in range(num_sensors)], sensor_data.keys())
+    plt.ylim(-spacing, num_sensors * spacing)  # Adjust plot limits to ensure visibility
+    plt.title("Sensor Timestamps")
+    plt.legend(loc="upper right")
+    plt.grid(True)
+
+
+### Plotting Code for Maps ###
 def create_map_with_headings(
     latitude, longitude, heading, map_filename="temp", plot_every=1
 ):
@@ -438,8 +471,8 @@ def create_map_with_headings(
     return html_filename
 
 
-def create_map_with_highlighted_indexes(
-    latitude, longitude, highlight_indices, map_filename="temp", plot_every=1
+def create_map(
+    latitude, longitude, highlight_indices=[], map_filename="temp", plot_every=1
 ):
     """
     Creates a map and plots every 'plot_every' points from the 'latitude' and 'longitude' lists.

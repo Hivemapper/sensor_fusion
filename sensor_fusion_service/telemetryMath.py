@@ -1,21 +1,57 @@
 import math
 import numpy as np
-
 from typing import List
-from filter import butter_lowpass_filter
-from sqliteInterface import IMUData, GNSSData
-from conversions import convertTimeToEpoch
+
+from sensor_fusion.sensor_fusion_service.filter import butter_lowpass_filter
+from sensor_fusion.sensor_fusion_service.sqliteInterface import IMUData, GNSSData
+from sensor_fusion.sensor_fusion_service.conversions import convertTimeToEpoch
 
 
 # from plottingCode import plot_signals_over_time, plot_sensor_data, plot_signal_over_time
 # import matplotlib.pyplot as plt
 
+
+# Constants for threshold-based window averaging
 WINDOW_SIZE = 1000
 THRESHOLD_ACCEL = 0.00005
 THRESHOLD_GYRO = 0.00005
 
+# Constants for IMU LOW PASS FILTER
+IMU_LOW_PASS_CUTOFF_FREQ = 3
+IMU_LOW_PASS_ORDER = 3
+IMU_STATIONARY_LOW_PASS_CUTOFF_FREQ = 5
 
-def calculateAverageFrequency(epoch_times_ms):
+
+# for: /Users/rogerberman/Desktop/4.9.11_DB_data/testData/2024-07-17T15:34:38.000Z.db
+# OFFSETS = {
+#     "acc_x": 0.23540433574567557,
+#     "acc_y": 0.0009506753661703987,
+#     "acc_z": 0.017152832308572785,
+#     "gyro_x": 0.05056635014217598,
+#     "gyro_y": 0.010372298896629956,
+#     "gyro_z": 0.0854693413851669,
+# }
+
+OFFSETS = {
+    "acc_x": -0.04633832350834084,
+    "acc_y": -0.024603480328423244,
+    "acc_z": 0.02175024562121597,
+    "gyro_x": 0.0016928365665450007,
+    "gyro_y": -0.0028576082846062836,
+    "gyro_z": 0.00037565459775269636,
+}
+
+SCALING = {
+    "acc_x": 1.0,
+    "acc_y": 1.0,
+    "acc_z": 1.0,
+    "gyro_x": 1.0,
+    "gyro_y": 1.0,
+    "gyro_z": 1.0,
+}
+
+
+def calculate_average_frequency(epoch_times_ms):
     """
     Calculates the average frequency of events given a list of epoch times in milliseconds starting from zero.
     Parameters:
@@ -36,7 +72,7 @@ def calculateAverageFrequency(epoch_times_ms):
     return average_frequency
 
 
-def extractAndSmoothImuData(imu_data: List[IMUData]):
+def extract_smooth_imu_data(imu_data: List[IMUData], offsets: dict = OFFSETS):
     """
     Extracts accelerometer, gyroscope data, and time differences from the given data.
     Parameters:
@@ -55,21 +91,49 @@ def extractAndSmoothImuData(imu_data: List[IMUData]):
         gyro_x.append(math.radians(point.gx))
         gyro_y.append(math.radians(point.gy))
         gyro_z.append(math.radians(point.gz))
-        time.append(point.system_time)
-        converted_time.append(convertTimeToEpoch(point.system_time))
+        time.append(point.time)
+        converted_time.append(convertTimeToEpoch(point.time))
         temperature.append(point.temperature)
         session.append(point.session)
         row_id.append(point.row_id)
 
-    freq = math.floor(calculateAverageFrequency(converted_time))
+    freq = math.floor(calculate_average_frequency(converted_time))
     print(f"IMU data frequency: {freq} Hz")
 
-    acc_x = butter_lowpass_filter(acc_x, freq)
-    acc_y = butter_lowpass_filter(acc_y, freq)
-    acc_z = butter_lowpass_filter(acc_z, freq)
-    gyro_x = butter_lowpass_filter(gyro_x, freq)
-    gyro_y = butter_lowpass_filter(gyro_y, freq)
-    gyro_z = butter_lowpass_filter(gyro_z, freq)
+    acc_x = butter_lowpass_filter(
+        acc_x, freq, IMU_LOW_PASS_CUTOFF_FREQ, IMU_LOW_PASS_ORDER
+    )
+    acc_y = butter_lowpass_filter(
+        acc_y, freq, IMU_LOW_PASS_CUTOFF_FREQ, IMU_LOW_PASS_ORDER
+    )
+    acc_z = butter_lowpass_filter(
+        acc_z, freq, IMU_LOW_PASS_CUTOFF_FREQ, IMU_LOW_PASS_ORDER
+    )
+    gyro_x = butter_lowpass_filter(
+        gyro_x, freq, IMU_LOW_PASS_CUTOFF_FREQ, IMU_LOW_PASS_ORDER
+    )
+    gyro_y = butter_lowpass_filter(
+        gyro_y, freq, IMU_LOW_PASS_CUTOFF_FREQ, IMU_LOW_PASS_ORDER
+    )
+    gyro_z = butter_lowpass_filter(
+        gyro_z, freq, IMU_LOW_PASS_CUTOFF_FREQ, IMU_LOW_PASS_ORDER
+    )
+
+    # Handle Offsets
+    acc_x = np.subtract(acc_x, offsets["acc_x"])
+    acc_y = np.subtract(acc_y, offsets["acc_y"])
+    acc_z = np.subtract(acc_z, offsets["acc_z"])
+    gyro_x = np.subtract(gyro_x, offsets["gyro_x"])
+    gyro_y = np.subtract(gyro_y, offsets["gyro_y"])
+    gyro_z = np.subtract(gyro_z, offsets["gyro_z"])
+
+    # Handle Scaling
+    acc_x = np.multiply(acc_x, SCALING["acc_x"])
+    acc_y = np.multiply(acc_y, SCALING["acc_y"])
+    acc_z = np.multiply(acc_z, SCALING["acc_z"])
+    gyro_x = np.multiply(gyro_x, SCALING["gyro_x"])
+    gyro_y = np.multiply(gyro_y, SCALING["gyro_y"])
+    gyro_z = np.multiply(gyro_z, SCALING["gyro_z"])
 
     return (
         acc_x,
@@ -87,19 +151,19 @@ def extractAndSmoothImuData(imu_data: List[IMUData]):
     )
 
 
-def extractGNSSData(data: List[GNSSData]):
+def extract_gnss_data(data: List[GNSSData]):
     """
     Extracts GNSS data from the given data.
     Parameters:
-    - data: List of GNSSData instances containing 'lat', 'lon', 'alt', 'speed', 'heading', 'headingAccuracy', 'hdop', 'gdop', and 'time'.
+    - data: List of GNSSData instances containing 'lat', 'lon', 'alt', 'speed', 'heading', 'heading_accuracy', 'hdop', 'gdop', and 'time'.
     Returns:
-    - Tuple containing lists for 'lat', 'lon', 'alt', 'speed', 'heading', 'headingAccuracy', 'hdop', 'gdop', and time differences.
+    - Tuple containing lists for 'lat', 'lon', 'alt', 'speed', 'heading', 'heading_accuracy', 'hdop', 'gdop', and time differences.
     """
     lat, lon, alt = [], [], []
-    speed, heading, headingAccuracy = [], [], []
+    speed, heading, heading_accuracy = [], [], []
     hdop, gdop = [], []
     system_time = []
-    gnss_real_time, time_resolved = [], []
+    gnss_real_time, time_resolved, time, session = [], [], [], []
 
     for point in data:
         lat.append(point.lat)
@@ -107,14 +171,16 @@ def extractGNSSData(data: List[GNSSData]):
         alt.append(point.alt)
         speed.append(point.speed)
         heading.append(point.heading)
-        headingAccuracy.append(point.headingAccuracy)
+        heading_accuracy.append(point.heading_accuracy)
         hdop.append(point.hdop)
         gdop.append(point.gdop)
         system_time.append(convertTimeToEpoch(point.system_time))
         gnss_real_time.append(convertTimeToEpoch(point.time))
         time_resolved.append(point.time_resolved)
+        time.append(point.system_time)
+        session.append(point.session)
 
-    freq = math.floor(calculateAverageFrequency(system_time))
+    freq = math.floor(calculate_average_frequency(system_time))
     print(f"GNSS data frequency: {freq} Hz")
 
     return (
@@ -123,12 +189,14 @@ def extractGNSSData(data: List[GNSSData]):
         alt,
         speed,
         heading,
-        headingAccuracy,
+        heading_accuracy,
         hdop,
         gdop,
         system_time,
         gnss_real_time,
         time_resolved,
+        time,
+        session,
         freq,
     )
 
@@ -182,8 +250,8 @@ def threshold_based_window_averaging(data, times, window_size_ms, threshold):
     return np.array(output)
 
 
-def calculateStationary(
-    acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_freq, imu_time, debug=False
+def calculate_stationary_status(
+    acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_freq, imu_time
 ):
     # get point to point diffs for all sensors
     acc_x_diff = np.diff(acc_x)
@@ -206,27 +274,24 @@ def calculateStationary(
     abs_padded_gyro_y_diff = np.abs(padded_gyro_y_diff)
     abs_padded_gyro_z_diff = np.abs(padded_gyro_z_diff)
 
-    # # try low pass filter
-    cutoff_freq = 0.1
-
     # Apply low-pass filter for each cutoff frequency
     acc_x_diff_lowpass = butter_lowpass_filter(
-        abs_padded_acc_x_diff, imu_freq, cutoff_freq
+        abs_padded_acc_x_diff, imu_freq, IMU_STATIONARY_LOW_PASS_CUTOFF_FREQ
     )
     acc_y_diff_lowpass = butter_lowpass_filter(
-        abs_padded_acc_y_diff, imu_freq, cutoff_freq
+        abs_padded_acc_y_diff, imu_freq, IMU_STATIONARY_LOW_PASS_CUTOFF_FREQ
     )
     acc_z_diff_lowpass = butter_lowpass_filter(
-        abs_padded_acc_z_diff, imu_freq, cutoff_freq
+        abs_padded_acc_z_diff, imu_freq, IMU_STATIONARY_LOW_PASS_CUTOFF_FREQ
     )
     gyro_x_diff_lowpass = butter_lowpass_filter(
-        abs_padded_gyro_x_diff, imu_freq, cutoff_freq
+        abs_padded_gyro_x_diff, imu_freq, IMU_STATIONARY_LOW_PASS_CUTOFF_FREQ
     )
     gyro_y_diff_lowpass = butter_lowpass_filter(
-        abs_padded_gyro_y_diff, imu_freq, cutoff_freq
+        abs_padded_gyro_y_diff, imu_freq, IMU_STATIONARY_LOW_PASS_CUTOFF_FREQ
     )
     gyro_z_diff_lowpass = butter_lowpass_filter(
-        abs_padded_gyro_z_diff, imu_freq, cutoff_freq
+        abs_padded_gyro_z_diff, imu_freq, IMU_STATIONARY_LOW_PASS_CUTOFF_FREQ
     )
 
     # Gyro threshold +- 0.001, Accel threshold +- 0.001
@@ -263,21 +328,5 @@ def calculateStationary(
     combined_gyro_accel = acc_res | gyro_res
 
     combined_gyro_accel = np.where(combined_gyro_accel == 0, 0.0, 1.0)
-    # if debug:
-    #     plot_sensor_data(
-    #         imu_time,
-    #         acc_x_diff_lowpass,
-    #         acc_y_diff_lowpass,
-    #         acc_z_diff_lowpass,
-    #         "Accelerometer Filtered Diff",
-    #     )
-    #     plot_sensor_data(
-    #         imu_time,
-    #         gyro_x_diff_lowpass,
-    #         gyro_y_diff_lowpass,
-    #         gyro_z_diff_lowpass,
-    #         "Gyroscope Filtered Diff",
-    #     )
-    #     plot_signal_over_time(imu_time, combined_gyro_accel, "Stationary")
-    #     plt.show()
+
     return combined_gyro_accel
