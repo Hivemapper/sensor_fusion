@@ -49,7 +49,6 @@ def align_sensor_with_reference(sensor_time, sensor_data, ref_time):
         sensor_time (ndarray): Timestamps of the sensor data.
         sensor_data (ndarray): Sensor data values.
         ref_time (ndarray): Reference timestamps to align with.
-
     Returns:
         ndarray: Aligned sensor data interpolated to match the reference timestamps.
     """
