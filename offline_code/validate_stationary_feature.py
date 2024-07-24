@@ -4,18 +4,18 @@ import numpy as np
 import argparse
 import os
 
-from sensor_fusion.fusion import SqliteInterface, convertTimeToEpoch
-from sensor_fusion.offlineCode.utils.plottingCode import (
+from sensor_fusion.sensor_fusion_service.conversions import convert_time_to_epoch
+from sensor_fusion.offline_code.utils.plotting_code import (
     plot_signals_over_time,
     plot_sensor_data,
     plot_sensor_data_classified,
 )
-from sensor_fusion.offlineCode.utils.processDBs import (
+from sensor_fusion.offline_code.utils.process_validate_dbs import (
     validate_db_file,
     process_db_file_for_individual_drives,
     aggregate_data,
 )
-from sensor_fusion.offlineCode.utils.utils import valid_dir, valid_file
+from sensor_fusion.offline_code.utils.utils import valid_dir, valid_file
 
 
 def main(file_path):
@@ -54,14 +54,16 @@ def main(file_path):
 
             ### Convert time to epoch for all values
             for i in range(len(gnss_data["system_time"])):
-                gnss_data["system_time"][i] = convertTimeToEpoch(
+                gnss_data["system_time"][i] = convert_time_to_epoch(
                     gnss_data["system_time"][i]
                 )
             for i in range(len(raw_imu["time"])):
-                raw_imu["time"][i] = convertTimeToEpoch(raw_imu["time"][i])
+                raw_imu["time"][i] = convert_time_to_epoch(raw_imu["time"][i])
 
             for i in range(len(processed_imu["time"])):
-                processed_imu["time"][i] = convertTimeToEpoch(processed_imu["time"][i])
+                processed_imu["time"][i] = convert_time_to_epoch(
+                    processed_imu["time"][i]
+                )
 
             ##### Plottting #####
             print("Downsampling data")

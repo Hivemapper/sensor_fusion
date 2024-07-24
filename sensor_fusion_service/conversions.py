@@ -140,7 +140,7 @@ def enu_to_lla(points_enu, ref_lla):
 #################### Time Conversions Functions ####################
 
 
-def convertTimeToEpoch(time_str):
+def convert_time_to_epoch(time_str):
     """
     Converts a time string in the format 'YYYY-MM-DD HH:MM:SS' or 'YYYY-MM-DD HH:MM:SS.sss' to epoch milliseconds.
     Parameters:
@@ -159,7 +159,7 @@ def convertTimeToEpoch(time_str):
     return epoch_ms
 
 
-def convertEpochToTime(epoch_ms):
+def convert_epoch_to_time(epoch_ms):
     """
     Converts an epoch time in milliseconds to a time string in the format 'YYYY-MM-DD HH:MM:SS.sss'.
 
@@ -174,6 +174,9 @@ def convertEpochToTime(epoch_ms):
     # Convert to datetime object
     datetime_obj = datetime.fromtimestamp(epoch_s, tz=timezone.utc)
     return datetime_obj.strftime("%Y-%m-%d %H:%M:%S.%f")
+
+
+#################### Data Conversions Functions ####################
 
 
 def lists_to_dicts(keys, *lists):

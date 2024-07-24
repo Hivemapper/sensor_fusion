@@ -3,8 +3,8 @@ import numpy as np
 from typing import List
 
 from sensor_fusion.sensor_fusion_service.filter import butter_lowpass_filter
-from sensor_fusion.sensor_fusion_service.sqliteInterface import IMUData, GNSSData
-from sensor_fusion.sensor_fusion_service.conversions import convertTimeToEpoch
+from sensor_fusion.sensor_fusion_service.data_definitions import IMUData, GNSSData
+from sensor_fusion.sensor_fusion_service.conversions import convert_time_to_epoch
 
 
 # from plottingCode import plot_signals_over_time, plot_sensor_data, plot_signal_over_time
@@ -92,7 +92,7 @@ def extract_smooth_imu_data(imu_data: List[IMUData], offsets: dict = OFFSETS):
         gyro_y.append(math.radians(point.gy))
         gyro_z.append(math.radians(point.gz))
         time.append(point.time)
-        converted_time.append(convertTimeToEpoch(point.time))
+        converted_time.append(convert_time_to_epoch(point.time))
         temperature.append(point.temperature)
         session.append(point.session)
         row_id.append(point.row_id)
@@ -174,8 +174,8 @@ def extract_gnss_data(data: List[GNSSData]):
         heading_accuracy.append(point.heading_accuracy)
         hdop.append(point.hdop)
         gdop.append(point.gdop)
-        system_time.append(convertTimeToEpoch(point.system_time))
-        gnss_real_time.append(convertTimeToEpoch(point.time))
+        system_time.append(convert_time_to_epoch(point.system_time))
+        gnss_real_time.append(convert_time_to_epoch(point.time))
         time_resolved.append(point.time_resolved)
         time.append(point.system_time)
         session.append(point.session)

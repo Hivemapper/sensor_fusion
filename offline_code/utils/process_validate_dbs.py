@@ -1,7 +1,7 @@
 import os
 from multiprocessing import Process, Queue
 
-from sensor_fusion.fusion import (
+from sensor_fusion.sensor_fusion_service.sqlite_interface import (
     SqliteInterface,
 )
 
@@ -18,7 +18,7 @@ def validate_db_file(file_path):
         camera_type = "hdc"
         sql_db = SqliteInterface(file_path)
         # Check for HDCS
-        if sql_db.table_exists("magnetometer"):
+        if sql_db.check_table_exists("magnetometer"):
             mag_data = sql_db.queryAllMagnetometer()
             if len(mag_data) > 0:
                 camera_type = "hdcs"
@@ -128,13 +128,13 @@ def process_db_file_for_individual_drives(filename, camera_type):
         gnss_data = sql_db.queryAllGnss()
         imu_data = sql_db.queryAllImu()
         mag_data = sql_db.queryAllMagnetometer()
-        if sql_db.table_exists("imu_processed"):
+        if sql_db.check_table_exists("imu_processed"):
             imu_processed = True
             imu_processed_data = sql_db.queryAllProcessedImu()
             if len(imu_processed_data) == 0:
                 print("No processed IMU data found")
             # Get fused position data
-        if sql_db.table_exists("fused_position"):
+        if sql_db.check_table_exists("fused_position"):
             fused_table = True
             fused_position_data = sql_db.queryAllFusedPosition()
             if len(fused_position_data) == 0:
@@ -180,7 +180,7 @@ def process_db_file_for_individual_drives(filename, camera_type):
                 print(f"Not enough data to process for session {session}")
                 continue
 
-            if imu_processed:
+            if imu_processed and not fused_table:
                 print(
                     f"  Session: {session}, gnss: {len(gnss_data_session)}, raw_imu: {len(imu_data_session)}, processed_imu: {len(imu_processed_data_session)}, mag: {len(mag_data_session)}"
                 )
@@ -190,13 +190,14 @@ def process_db_file_for_individual_drives(filename, camera_type):
                     "imu_processed_data": imu_processed_data_session,
                     "mag_data": mag_data_session,
                 }
-            elif fused_table:
+            elif imu_processed and fused_table:
                 print(
-                    f"  Session: {session}, gnss: {len(gnss_data_session)}, raw_imu: {len(imu_data_session)}, mag: {len(mag_data_session)}, fused: {len(fused_position_data_session)}"
+                    f"  Session: {session}, gnss: {len(gnss_data_session)}, raw_imu: {len(imu_data_session)}, processed_imu: {len(imu_processed_data_session)}, mag: {len(mag_data_session)}, fused: {len(fused_position_data_session)}"
                 )
                 useable_sessions[session] = {
                     "gnss_data": gnss_data_session,
                     "imu_data": imu_data_session,
+                    "imu_processed_data": imu_processed_data_session,
                     "mag_data": mag_data_session,
                     "fused_data": fused_position_data_session,
                 }
@@ -213,7 +214,7 @@ def process_db_file_for_individual_drives(filename, camera_type):
     else:
         gnss_data = sql_db.queryAllGnss()
         imu_data = sql_db.queryAllImu()
-        if sql_db.table_exists("imu_processed"):
+        if sql_db.check_table_exists("imu_processed"):
             imu_processed_data = sql_db.queryAllProcessedImu()
             if len(imu_processed_data) == 0:
                 print("No processed IMU data found")
@@ -235,7 +236,7 @@ def process_db_file_for_individual_drives(filename, camera_type):
         for session in common_sessions:
             gnss_data_session = [d for d in gnss_data if d.session == session]
             imu_data_session = [d for d in imu_data if d.session == session]
-            if sql_db.table_exists("imu_processed"):
+            if sql_db.check_table_exists("imu_processed"):
                 imu_processed_data_session = [
                     d for d in imu_processed_data if d.session == session
                 ]

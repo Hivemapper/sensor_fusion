@@ -2,17 +2,16 @@ import time
 import argparse
 # import matplotlib.pyplot as plt
 
-from processing import (
+from sensor_fusion.sensor_fusion_service.processing import (
     grab_most_recent_raw_data_session,
     process_raw_data,
     remove_duplicate_imu_data,
 )
-from sqliteInterface import (
+from sensor_fusion.sensor_fusion_service.sqlite_interface import (
     SqliteInterface,
-    TableName,
     DATA_LOGGER_PATH,
 )
-# from plottingCode import plot_signals_over_time, plot_sensor_data, plot_signal_over_time
+from sensor_fusion.sensor_fusion_service.data_definitions import TableName
 
 IMU_SET_FREQUENCY = 100.0  # Hz
 AMOUNT_OF_DATA_IN_SECONDS = 60.0  # seconds
