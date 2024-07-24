@@ -85,7 +85,6 @@ def process_raw_data(
         gyro_z,
         imu_freq,
         imu_converted_time,
-        debug,
     )
 
     fused_position, fused_heading, forward_vel, yaw_rates = calculate_fused_position(

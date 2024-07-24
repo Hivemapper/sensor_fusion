@@ -10,9 +10,17 @@ from sensor_fusion.sensor_fusion_service.conversions import convertTimeToEpoch
 # from plottingCode import plot_signals_over_time, plot_sensor_data, plot_signal_over_time
 # import matplotlib.pyplot as plt
 
+
+# Constants for threshold-based window averaging
 WINDOW_SIZE = 1000
 THRESHOLD_ACCEL = 0.00005
 THRESHOLD_GYRO = 0.00005
+
+# Constants for IMU LOW PASS FILTER
+IMU_LOW_PASS_CUTOFF_FREQ = 3
+IMU_LOW_PASS_ORDER = 3
+IMU_STATIONARY_LOW_PASS_CUTOFF_FREQ = 5
+
 
 # for: /Users/rogerberman/Desktop/4.9.11_DB_data/testData/2024-07-17T15:34:38.000Z.db
 # OFFSETS = {
@@ -92,12 +100,24 @@ def extract_smooth_imu_data(imu_data: List[IMUData], offsets: dict = OFFSETS):
     freq = math.floor(calculate_average_frequency(converted_time))
     print(f"IMU data frequency: {freq} Hz")
 
-    acc_x = butter_lowpass_filter(acc_x, freq)
-    acc_y = butter_lowpass_filter(acc_y, freq)
-    acc_z = butter_lowpass_filter(acc_z, freq)
-    gyro_x = butter_lowpass_filter(gyro_x, freq)
-    gyro_y = butter_lowpass_filter(gyro_y, freq)
-    gyro_z = butter_lowpass_filter(gyro_z, freq)
+    acc_x = butter_lowpass_filter(
+        acc_x, freq, IMU_LOW_PASS_CUTOFF_FREQ, IMU_LOW_PASS_ORDER
+    )
+    acc_y = butter_lowpass_filter(
+        acc_y, freq, IMU_LOW_PASS_CUTOFF_FREQ, IMU_LOW_PASS_ORDER
+    )
+    acc_z = butter_lowpass_filter(
+        acc_z, freq, IMU_LOW_PASS_CUTOFF_FREQ, IMU_LOW_PASS_ORDER
+    )
+    gyro_x = butter_lowpass_filter(
+        gyro_x, freq, IMU_LOW_PASS_CUTOFF_FREQ, IMU_LOW_PASS_ORDER
+    )
+    gyro_y = butter_lowpass_filter(
+        gyro_y, freq, IMU_LOW_PASS_CUTOFF_FREQ, IMU_LOW_PASS_ORDER
+    )
+    gyro_z = butter_lowpass_filter(
+        gyro_z, freq, IMU_LOW_PASS_CUTOFF_FREQ, IMU_LOW_PASS_ORDER
+    )
 
     # Handle Offsets
     acc_x = np.subtract(acc_x, offsets["acc_x"])
@@ -231,7 +251,7 @@ def threshold_based_window_averaging(data, times, window_size_ms, threshold):
 
 
 def calculate_stationary_status(
-    acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_freq, imu_time, debug=False
+    acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_freq, imu_time
 ):
     # get point to point diffs for all sensors
     acc_x_diff = np.diff(acc_x)
@@ -254,27 +274,24 @@ def calculate_stationary_status(
     abs_padded_gyro_y_diff = np.abs(padded_gyro_y_diff)
     abs_padded_gyro_z_diff = np.abs(padded_gyro_z_diff)
 
-    # # try low pass filter
-    cutoff_freq = 0.1
-
     # Apply low-pass filter for each cutoff frequency
     acc_x_diff_lowpass = butter_lowpass_filter(
-        abs_padded_acc_x_diff, imu_freq, cutoff_freq
+        abs_padded_acc_x_diff, imu_freq, IMU_STATIONARY_LOW_PASS_CUTOFF_FREQ
     )
     acc_y_diff_lowpass = butter_lowpass_filter(
-        abs_padded_acc_y_diff, imu_freq, cutoff_freq
+        abs_padded_acc_y_diff, imu_freq, IMU_STATIONARY_LOW_PASS_CUTOFF_FREQ
     )
     acc_z_diff_lowpass = butter_lowpass_filter(
-        abs_padded_acc_z_diff, imu_freq, cutoff_freq
+        abs_padded_acc_z_diff, imu_freq, IMU_STATIONARY_LOW_PASS_CUTOFF_FREQ
     )
     gyro_x_diff_lowpass = butter_lowpass_filter(
-        abs_padded_gyro_x_diff, imu_freq, cutoff_freq
+        abs_padded_gyro_x_diff, imu_freq, IMU_STATIONARY_LOW_PASS_CUTOFF_FREQ
     )
     gyro_y_diff_lowpass = butter_lowpass_filter(
-        abs_padded_gyro_y_diff, imu_freq, cutoff_freq
+        abs_padded_gyro_y_diff, imu_freq, IMU_STATIONARY_LOW_PASS_CUTOFF_FREQ
     )
     gyro_z_diff_lowpass = butter_lowpass_filter(
-        abs_padded_gyro_z_diff, imu_freq, cutoff_freq
+        abs_padded_gyro_z_diff, imu_freq, IMU_STATIONARY_LOW_PASS_CUTOFF_FREQ
     )
 
     # Gyro threshold +- 0.001, Accel threshold +- 0.001
@@ -311,21 +328,5 @@ def calculate_stationary_status(
     combined_gyro_accel = acc_res | gyro_res
 
     combined_gyro_accel = np.where(combined_gyro_accel == 0, 0.0, 1.0)
-    # if debug:
-    #     plot_sensor_data(
-    #         imu_time,
-    #         acc_x_diff_lowpass,
-    #         acc_y_diff_lowpass,
-    #         acc_z_diff_lowpass,
-    #         "Accelerometer Filtered Diff",
-    #     )
-    #     plot_sensor_data(
-    #         imu_time,
-    #         gyro_x_diff_lowpass,
-    #         gyro_y_diff_lowpass,
-    #         gyro_z_diff_lowpass,
-    #         "Gyroscope Filtered Diff",
-    #     )
-    #     plot_signal_over_time(imu_time, combined_gyro_accel, "Stationary")
-    #     plt.show()
+
     return combined_gyro_accel

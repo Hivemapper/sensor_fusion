@@ -252,11 +252,11 @@ def plot_sensor_data_classified(
 
     # Plot x-axis data
     ax1.plot(time_series, x_series, color="r")
-    ax1.scatter(
+    ax1.plot(
         time_series,
         x_zeros_and_ones,
         color="black",
-        s=0.5,
+        # s=0.5,
         label="Threshold Output",
         zorder=10,
     )
@@ -268,11 +268,11 @@ def plot_sensor_data_classified(
 
     # Plot y-axis data
     ax2.plot(time_series, y_series, color="g")
-    ax2.scatter(
+    ax2.plot(
         time_series,
         y_zeros_and_ones,
         color="black",
-        s=0.5,
+        # s=0.5,
         label="Threshold Output",
         zorder=10,
     )
@@ -284,11 +284,11 @@ def plot_sensor_data_classified(
 
     # Plot z-axis data
     ax3.plot(time_series, z_series, color="b")
-    ax3.scatter(
+    ax3.plot(
         time_series,
         z_zeros_and_ones,
         color="black",
-        s=0.5,
+        # s=0.5,
         label="Threshold Output",
         zorder=10,
     )

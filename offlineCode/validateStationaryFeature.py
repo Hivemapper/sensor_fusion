@@ -6,35 +6,16 @@ import os
 
 from sensor_fusion.fusion import SqliteInterface, convertTimeToEpoch
 from sensor_fusion.offlineCode.utils.plottingCode import (
-    plot_signal_over_time,
     plot_signals_over_time,
     plot_sensor_data,
-    plot_sensor_timestamps,
-    create_map,
+    plot_sensor_data_classified,
 )
 from sensor_fusion.offlineCode.utils.processDBs import (
     validate_db_file,
     process_db_file_for_individual_drives,
     aggregate_data,
 )
-from sensor_fusion.sensor_fusion_service.processing import cubic_spline_interpolation
-from sensor_fusion.offlineCode.utils.utils import (
-    valid_dir,
-    valid_file,
-    remove_duplicate_data,
-)
-from get_imu_offset import get_imu_offsets
-
-
-def check_table_copy(raw_data, processed_data):
-    for i in range(len(processed_data)):
-        if (
-            raw_data[i]["time"] != processed_data[i]["time"]
-            and raw_data[i]["id"] != processed_data[i]["row_id"]
-        ):
-            print("Data does not match")
-            return False
-    return True
+from sensor_fusion.offlineCode.utils.utils import valid_dir, valid_file
 
 
 def main(file_path):
@@ -52,33 +33,26 @@ def main(file_path):
     try:
         useable_sessions = process_db_file_for_individual_drives(file_path, camera_type)
         for session in useable_sessions:
+            ##### Ingest Data #####
             raw_imu = aggregate_data(useable_sessions[session]["imu_data"])
             processed_imu = aggregate_data(
                 useable_sessions[session]["imu_processed_data"]
             )
             gnss_data = aggregate_data(useable_sessions[session]["gnss_data"])
-            fused_data = aggregate_data(useable_sessions[session]["fused_data"])
-            ## Filter out duplicates
-            fused_data = remove_duplicate_data(fused_data, "time")
             raw_imu_len = len(raw_imu)
             processed_imu_len = len(processed_imu)
             gnss_len = len(gnss_data)
-            fused_len = len(fused_data)
-            if (
-                raw_imu_len == 0
-                or processed_imu_len == 0
-                or gnss_len == 0
-                or fused_len == 0
-            ):
+            if raw_imu_len == 0 or processed_imu_len == 0 or gnss_len == 0:
                 print(
-                    f"Session: {session} -> Missing Data -- gnss: {gnss_len} raw_imu: {raw_imu_len} processed_imu: {processed_imu_len} fused: {fused_len}"
+                    f"Session: {session} -> Missing Data -- gnss: {gnss_len} raw_imu: {raw_imu_len} processed_imu: {processed_imu_len}"
                 )
                 continue
 
             print(
                 f"Session: {session} -> gnss: {len(gnss_data['system_time'])} raw_imu: {len(raw_imu['time'])} processed_imu: {len(processed_imu['time'])}"
             )
-            # Convert time to epoch for all values
+
+            ### Convert time to epoch for all values
             for i in range(len(gnss_data["system_time"])):
                 gnss_data["system_time"][i] = convertTimeToEpoch(
                     gnss_data["system_time"][i]
@@ -89,6 +63,7 @@ def main(file_path):
             for i in range(len(processed_imu["time"])):
                 processed_imu["time"][i] = convertTimeToEpoch(processed_imu["time"][i])
 
+            ##### Plottting #####
             print("Downsampling data")
             # downsample stationary to compare with GNSS
             stationary_down = np.interp(
@@ -105,93 +80,68 @@ def main(file_path):
                 signal1_label="Speed",
                 signal2_label="Stationary",
             )
-            forward_vel = np.interp(
+
+            # plot_sensor_data(
+            #     processed_imu["time"],
+            #     processed_imu["ax"],
+            #     processed_imu["ay"],
+            #     processed_imu["az"],
+            #     sensor_name="Processed ACCEL",
+            #     title="Processed ACCEL Data",
+            #     downsample_factor=5,
+            # )
+            # plot_sensor_data(
+            #     processed_imu["time"],
+            #     processed_imu["gx"],
+            #     processed_imu["gy"],
+            #     processed_imu["gz"],
+            #     sensor_name="Processed GYRO",
+            #     title="Processed GYRO Data",
+            #     downsample_factor=5,
+            # )
+
+            ### Downsample raw data
+            acc_x_down = np.interp(
+                gnss_data["system_time"], processed_imu["time"], processed_imu["ax"]
+            )
+            acc_y_down = np.interp(
+                gnss_data["system_time"], processed_imu["time"], processed_imu["ay"]
+            )
+            acc_z_down = np.interp(
+                gnss_data["system_time"], processed_imu["time"], processed_imu["az"]
+            )
+            gyro_x_down = np.interp(
+                gnss_data["system_time"], processed_imu["time"], processed_imu["gx"]
+            )
+            gyro_y_down = np.interp(
+                gnss_data["system_time"], processed_imu["time"], processed_imu["gy"]
+            )
+            gyro_z_down = np.interp(
+                gnss_data["system_time"], processed_imu["time"], processed_imu["gz"]
+            )
+
+            stationary_down *= 0.5
+            plot_sensor_data_classified(
                 gnss_data["system_time"],
-                fused_data["time"],
-                fused_data["forward_velocity"],
-            )
-
-            plot_signals_over_time(
-                gnss_data["system_time"],
-                gnss_data["speed"],
-                forward_vel,
-                downsample_factor=1,
-                signal1_label="Speed",
-                signal2_label="Processed Speed",
-            )
-
-            # Match fused heading to gnss heading
-            fused_heading = np.interp(
-                gnss_data["system_time"],
-                fused_data["time"],
-                fused_data["fused_heading"],
-            )
-            fused_heading = np.rad2deg(fused_heading)
-            fused_heading = [
-                heading_val + 360 if heading_val < 0 else heading_val
-                for heading_val in fused_heading
-            ]
-
-            plot_signals_over_time(
-                gnss_data["system_time"],
-                gnss_data["heading"],
-                fused_heading,
-                downsample_factor=10,
-                signal1_label="Heading",
-                signal2_label="Processed Heading",
-            )
-
-            # plot yaw rates
-            yaw_rate_deg = fused_data["yaw_rate"]
-            plot_signal_over_time(
-                fused_data["time"], yaw_rate_deg, signal_label="Yaw Rate"
-            )
-
-            plot_sensor_data(
-                processed_imu["time"],
-                processed_imu["ax"],
-                processed_imu["ay"],
-                processed_imu["az"],
+                acc_x_down,
+                acc_y_down,
+                acc_z_down,
+                stationary_down,
+                stationary_down,
+                stationary_down,
                 sensor_name="Processed ACCEL",
                 title="Processed ACCEL Data",
-                downsample_factor=5,
             )
-            plot_sensor_data(
-                processed_imu["time"],
-                processed_imu["gx"],
-                processed_imu["gy"],
-                processed_imu["gz"],
+            plot_sensor_data_classified(
+                gnss_data["system_time"],
+                gyro_x_down,
+                gyro_y_down,
+                gyro_z_down,
+                stationary_down,
+                stationary_down,
+                stationary_down,
                 sensor_name="Processed GYRO",
                 title="Processed GYRO Data",
-                downsample_factor=1,
-            )
-            sensor_data = {
-                "gnss": gnss_data["system_time"],
-                "raw_imu": raw_imu["time"],
-                "processed_imu": processed_imu["time"],
-            }
-            plot_sensor_timestamps(sensor_data)
-
-            get_imu_offsets(
-                processed_imu["ax"],
-                processed_imu["ay"],
-                processed_imu["az"],
-                processed_imu["gx"],
-                processed_imu["gy"],
-                processed_imu["gz"],
-                processed_imu["time"],
-                gnss_data["system_time"],
-                gnss_data["speed"],
-            )
-
-            create_map(
-                fused_data["gnss_lat"],
-                fused_data["gnss_lon"],
-            )
-
-            create_map(
-                fused_data["fused_lat"],
-                fused_data["fused_lon"],
             )
 
             plt.show()
