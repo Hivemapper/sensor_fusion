@@ -20,7 +20,7 @@ from .utils import (
 )
 from .ellipsoid_fit import calibrate_mag
 
-from sensor_fusion.offlineCode.utils.plottingCode import (
+from offline_code.utils.plotting_code import (
     plot_signal_over_time,
     plot_signals_over_time,
     plot_sensor_data,

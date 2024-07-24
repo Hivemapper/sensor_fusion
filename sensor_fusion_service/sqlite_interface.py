@@ -3,103 +3,23 @@ import os
 import math
 import time
 from functools import wraps
-from enum import Enum
+
+from sensor_fusion.sensor_fusion_service.data_definitions import (
+    IMUData,
+    ProcessedIMUData,
+    GNSSData,
+    MagData,
+    FusedPositionData,
+    PURGE_GROUP,
+)
 
 # For SQLite interface
 DATA_LOGGER_PATH = "/data/recording/data-logger.v1.4.5.db"
 DESC = "DESC"
 ASC = "ASC"
 
-
-class TableName(Enum):
-    GNSS_TABLE = "gnss"
-    GNSS_AUTH_TABLE = "gnss_auth"
-    IMU_RAW_TABLE = "imu"
-    IMU_PROCESSED_TABLE = "imu_processed"
-    MAG_TABLE = "magnetometer"
-    SENSOR_FUSION_LOG_TABLE = "sensor_fusion_logs"
-    FUSED_POSITION_TABLE = "fused_position"
-
-
-# Tables in Purge Group
-PURGE_GROUP = [
-    TableName.GNSS_TABLE.value,
-    TableName.GNSS_AUTH_TABLE.value,
-    TableName.IMU_RAW_TABLE.value,
-    TableName.IMU_PROCESSED_TABLE.value,
-    TableName.MAG_TABLE.value,
-    TableName.FUSED_POSITION_TABLE.value,
-]
-
 # Purging Constants
 DB_SIZE_LIMIT = 1024 * 1024 * 200  # 200 MB
-
-
-class IMUData:
-    def __init__(self, ax, ay, az, gx, gy, gz, time, temperature, session, row_id):
-        self.ax = ax
-        self.ay = ay
-        self.az = az
-        self.gx = gx
-        self.gy = gy
-        self.gz = gz
-        self.time = time
-        self.temperature = temperature
-        self.session = session
-        self.row_id = row_id
-
-    def to_dict(self):
-        return {
-            "acc_x": self.ax,
-            "acc_y": self.ay,
-            "acc_z": self.az,
-            "gyro_x": self.gx,
-            "gyro_y": self.gy,
-            "gyro_z": self.gz,
-            "time": self.time,
-            "temperature": self.temperature,
-            "session": self.session,
-            "row_id": self.row_id,
-        }
-
-
-class MagData:
-    def __init__(self, mx, my, mz, time, session):
-        self.mx = mx
-        self.my = my
-        self.mz = mz
-        self.time = time
-        self.session = session
-
-
-class GNSSData:
-    def __init__(
-        self,
-        lat,
-        lon,
-        alt,
-        speed,
-        heading,
-        heading_accuracy,
-        hdop,
-        gdop,
-        system_time,
-        time,
-        time_resolved,
-        session,
-    ):
-        self.lat = lat
-        self.lon = lon
-        self.alt = alt
-        self.speed = speed
-        self.heading = heading
-        self.heading_accuracy = heading_accuracy
-        self.hdop = hdop
-        self.gdop = gdop
-        self.system_time = system_time
-        self.time = time
-        self.time_resolved = time_resolved
-        self.session = session
 
 
 # Function decorator to retry a function a specified number of times with a delay between each attempt
@@ -634,6 +554,176 @@ class SqliteInterface:
             print(f"An error occurred while retrieving unique values: {e}")
             return []
 
+    ####  All Data Query Functions ####
+    def queryAllImu(self, order: str = "ASC"):
+        """
+        Queries the whole IMU table for accelerometer and gyroscope data and sorts by row ID.
+        Columns queried acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, time
+        Args:
+            order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'DESC'.
+        Returns:
+            list: A list of IMUData objects containing the accelerometer and gyroscope data.
+        """
+        try:
+            query = """
+                        SELECT acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, time, temperature, session, id
+                        FROM imu 
+                        ORDER BY id {}
+                    """.format(order)
+            rows = self.cursor.execute(query).fetchall()
+            results = [
+                IMUData(
+                    row[0],
+                    row[1],
+                    row[2],
+                    row[3],
+                    row[4],
+                    row[5],
+                    row[6],
+                    row[7],
+                    row[8],
+                    row[9],
+                )
+                for row in rows
+            ]
+            return results
+        except sqlite3.Error as e:
+            print(f"SQLite error: {e}")
+            return []
+
+    def queryAllProcessedImu(self, order: str = "ASC"):
+        """
+        Queries the whole IMU table for accelerometer and gyroscope data and sorts by row ID.
+        Columns queried acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, time
+        Args:
+            order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'DESC'.
+        Returns:
+            list: A list of ProcessedIMUData objects containing the accelerometer and gyroscope data.
+        """
+        try:
+            query = """
+                        SELECT acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, time, temperature, session, stationary, id
+                        FROM imu_processed 
+                        ORDER BY id {}
+                    """.format(order)
+            rows = self.cursor.execute(query).fetchall()
+            results = [
+                ProcessedIMUData(
+                    row[0],
+                    row[1],
+                    row[2],
+                    row[3],
+                    row[4],
+                    row[5],
+                    row[6],
+                    row[7],
+                    row[8],
+                    row[9],
+                    row[10],
+                )
+                for row in rows
+            ]
+            return results
+        except sqlite3.Error as e:
+            print(f"SQLite error: {e}")
+            return []
+
+    def queryAllMagnetometer(self, order: str = "ASC"):
+        """
+        Queries the magnetometer table for magnetometer data and sorts by row ID.
+        Columns queried mag_x, mag_y, mag_z, system_time
+        Args:
+            order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'DESC'.
+        Returns:
+            list: A list of MagnetometerData objects containing the magnetometer data.
+        """
+        try:
+            query = """
+                        SELECT mag_x, mag_y, mag_z, system_time, session
+                        FROM magnetometer
+                        ORDER BY id {}
+                    """.format(order)
+            rows = self.cursor.execute(query).fetchall()
+            results = [MagData(row[0], row[1], row[2], row[3], row[4]) for row in rows]
+            return results
+        except sqlite3.Error as e:
+            print(f"SQLite error: {e}")
+            return []
+
+    def queryAllGnss(self, order: str = "ASC"):
+        """
+        Queries the GNSS table for all GNSS data and sorts by row ID.
+        Columns queried latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, system_time, time, time_resolved, session
+        Args:
+            order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'DESC'.
+        Returns:
+            list: A list of GNSSData objects containing the GNSS data.
+        """
+        try:
+            query = """
+                        SELECT latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, system_time, time, time_resolved, session
+                        FROM gnss 
+                        ORDER BY id {}
+                    """.format(order)
+            rows = self.cursor.execute(query).fetchall()
+            results = [
+                GNSSData(
+                    row[0],
+                    row[1],
+                    row[2],
+                    row[3],
+                    row[4],
+                    row[5],
+                    row[6],
+                    row[7],
+                    row[8],
+                    row[9],
+                    row[10],
+                    row[11],
+                )
+                for row in rows
+            ]
+            return results
+        except sqlite3.Error as e:
+            print(f"SQLite error: {e}")
+            return []
+
+    def queryAllFusedPosition(self, order: str = "ASC"):
+        """
+        Queries the whole fused_position table and sorts by row ID.
+        Columns queried: id, time, gnss_lat, gnss_lon, fused_lat, fused_lon, fused_heading, forward_velocity, yaw_rate, session.
+        Args:
+            order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'ASC'.
+        Returns:
+            list: A list of FusedPositionData objects containing the fused position data.
+        """
+        try:
+            query = """
+                        SELECT id, time, gnss_lat, gnss_lon, fused_lat, fused_lon, fused_heading, forward_velocity, yaw_rate, session
+                        FROM fused_position 
+                        ORDER BY id {}
+                    """.format(order)
+            rows = self.cursor.execute(query).fetchall()
+            results = [
+                FusedPositionData(
+                    row[0],  # id
+                    row[1],  # time
+                    row[2],  # gnss_lat
+                    row[3],  # gnss_lon
+                    row[4],  # fused_lat
+                    row[5],  # fused_lon
+                    row[6],  # fused_heading
+                    row[7],  # forward_velocity
+                    row[8],  # yaw_rate
+                    row[9],  # session
+                )
+                for row in rows
+            ]
+            return results
+        except sqlite3.Error as e:
+            print(f"SQLite error: {e}")
+            return []
+
     ################# Table Level Functions #################
     @retry()
     def check_table_exists(self, table_name):
@@ -715,6 +805,7 @@ class SqliteInterface:
             print(f"An error occurred while deleting the rows: {e}")
             self.connection.rollback()
 
+    @retry()
     def purge_rows_by_value(self, table_name: str, column_name: str, value) -> None:
         """
         Purges all rows where the specified column contains the given value.

@@ -4,7 +4,7 @@ import sys
 sys.path.insert(
     0, "/Users/rogerberman/sensor-fusion"
 )  # Add the project root to the Python path
-from fusion import (
+from fusion_old import (
     SqliteInterface,
     extractAndSmoothImuData,
     extractAndSmoothMagData,
@@ -20,7 +20,10 @@ from fusion import (
     GNSS_DISTANCE_THRESHOLD,
     ASC,
 )
-from offlineCode.utils.plottingCode import plot_signal_over_time, plot_signals_over_time
+from offline_code.utils.plotting_code import (
+    plot_signal_over_time,
+    plot_signals_over_time,
+)
 import matplotlib.pyplot as plt
 
 

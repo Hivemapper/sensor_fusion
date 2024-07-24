@@ -9,12 +9,12 @@ sys.path.insert(
     0, "/Users/rogerberman/sensor-fusion"
 )  # Add the project root to the Python path
 
-from offlineCode.utils.plottingCode import (
+from offline_code.utils.plotting_code import (
     plot_signal_over_time,
     plot_signals_over_time,
     create_map,
 )
-from fusion import (
+from fusion_old import (
     SqliteInterface,
     extractAndSmoothImuData,
     extractAndSmoothMagData,

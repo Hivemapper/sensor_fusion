@@ -3,7 +3,7 @@ import numpy as np
 import os
 import time
 
-from opticalFlowHelpers import (
+from sensor_fusion.vision_based_orientation.optical_flow_helpers import (
     calculate_farneback_optical_flow,
     find_intersections_within_bounds,
     count_intersections_in_grid,

@@ -1,5 +1,5 @@
 import sys
-from offlineCode.utils.processDBs import (
+from offline_code.utils.process_validate_dbs import (
     validate_dbs,
     process_db_file_for_individual_drives,
 )
@@ -7,7 +7,7 @@ from offlineCode.utils.processDBs import (
 sys.path.insert(
     0, "/Users/rogerberman/hivemapper/sensor-fusion"
 )  # Add the project root to the Python path
-from fusion import (
+from fusion_old import (
     SqliteInterface,
     extractAndSmoothImuData,
     extractAndSmoothMagData,
@@ -26,7 +26,7 @@ from fusion import (
     GNSS_HEADING_ACCURACY_THRESHOLD,
     ASC,
 )
-from offlineCode.utils.plottingCode import (
+from offline_code.utils.plotting_code import (
     plot_signal_over_time,
     plot_signals_over_time,
     create_map_with_highlighted_indexes,

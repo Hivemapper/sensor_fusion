@@ -2,7 +2,7 @@ from typing import List
 import numpy as np
 from scipy.interpolate import CubicSpline
 
-from sensor_fusion.sensor_fusion_service.telemetryMath import (
+from sensor_fusion.sensor_fusion_service.telemetry_math import (
     extract_smooth_imu_data,
     extract_gnss_data,
     calculate_stationary_status,
@@ -11,9 +11,9 @@ from sensor_fusion.sensor_fusion_service.conversions import (
     lists_to_dicts,
     lla_to_enu,
     enu_to_lla,
-    convertTimeToEpoch,
+    convert_time_to_epoch,
 )
-from sensor_fusion.sensor_fusion_service.sqliteInterface import IMUData, GNSSData
+from sensor_fusion.sensor_fusion_service.data_definitions import IMUData, GNSSData
 from sensor_fusion.sensor_fusion_service.filter import ExtendedKalmanFilter as EKF
 
 
@@ -496,7 +496,7 @@ def remove_duplicate_imu_data(raw_data):
     last_time = 0
 
     for data_point in raw_data:
-        cur_time = convertTimeToEpoch(data_point.time)
+        cur_time = convert_time_to_epoch(data_point.time)
         if cur_time != last_time:
             new_data.append(data_point)
             last_time = cur_time
