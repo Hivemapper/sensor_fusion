@@ -881,6 +881,7 @@ class SqliteInterface:
                     )
             else:
                 # Check for session consistency remove sessions that are not in all tables
+                # This uses python 3.7+ behavior of keeping insertion order in dictionaries
                 unique_sessions = list(sessions_count.keys())
                 if len(unique_sessions) > 1:
                     oldest_session = unique_sessions[0]
