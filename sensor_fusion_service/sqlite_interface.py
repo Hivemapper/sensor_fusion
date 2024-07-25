@@ -4,14 +4,26 @@ import math
 import time
 from functools import wraps
 
-from sensor_fusion.sensor_fusion_service.data_definitions import (
-    IMUData,
-    ProcessedIMUData,
-    GNSSData,
-    MagData,
-    FusedPositionData,
-    PURGE_GROUP,
-)
+env = os.getenv("HIVE_ENV")
+
+if env == "local":
+    from sensor_fusion.sensor_fusion_service.data_definitions import (
+        IMUData,
+        ProcessedIMUData,
+        GNSSData,
+        MagData,
+        FusedPositionData,
+        PURGE_GROUP,
+    )
+else:
+    from data_definitions import (
+        IMUData,
+        ProcessedIMUData,
+        GNSSData,
+        MagData,
+        FusedPositionData,
+        PURGE_GROUP,
+    )
 
 # For SQLite interface
 DATA_LOGGER_PATH = "/data/recording/data-logger.v1.4.5.db"
@@ -845,6 +857,8 @@ class SqliteInterface:
             if self.get_db_size() < DB_SIZE_LIMIT:
                 return True
 
+            print("Purging the database to reduce the file size.")
+
             # sessions here are oldest to newest, important to keep this in mind
             sessions_count = {}
             table_row_counts = {}
@@ -870,6 +884,8 @@ class SqliteInterface:
                 sessions_to_remove, consistent_sessions = (
                     filter_sessions_with_non_max_counts(sessions_count)
                 )
+                print(f"Sessions to remove: {sessions_to_remove}")
+                print(f"Consistent sessions: {consistent_sessions}")
                 for session in sessions_to_remove:
                     for table in PURGE_GROUP:
                         self.purge_rows_by_value(
@@ -877,14 +893,15 @@ class SqliteInterface:
                             "session",
                             session,
                         )
-                # If all sessions are consistent, then we can purge the oldest session
-                oldest_session = list(consistent_sessions.keys())[0]
-                for table in PURGE_GROUP:
-                    self.purge_rows_by_value(
-                        table,
-                        "session",
-                        oldest_session,
-                    )
+                # If all sessions are consistent and there is more then 1, then we can purge the oldest session
+                if len(consistent_sessions) > 1:
+                    oldest_session = list(consistent_sessions.keys())[0]
+                    for table in PURGE_GROUP:
+                        self.purge_rows_by_value(
+                            table,
+                            "session",
+                            oldest_session,
+                        )
 
             self.vacuum()
             return True
