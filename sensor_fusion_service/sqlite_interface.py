@@ -881,28 +881,15 @@ class SqliteInterface:
                     )
             else:
                 # Check for session consistency remove sessions that are not in all tables
-                sessions_to_remove, consistent_sessions = (
-                    filter_sessions_with_non_max_counts(sessions_count)
-                )
-                print(f"Sessions to remove: {sessions_to_remove}")
-                print(f"Consistent sessions: {consistent_sessions}")
-                for session in sessions_to_remove:
-                    for table in PURGE_GROUP:
-                        self.purge_rows_by_value(
-                            table,
-                            "session",
-                            session,
-                        )
-                # If all sessions are consistent and there is more then 1, then we can purge the oldest session
-                if len(consistent_sessions) > 1:
-                    oldest_session = list(consistent_sessions.keys())[0]
+                unique_sessions = list(sessions_count.keys())
+                if len(unique_sessions) > 1:
+                    oldest_session = unique_sessions[0]
                     for table in PURGE_GROUP:
                         self.purge_rows_by_value(
                             table,
                             "session",
                             oldest_session,
                         )
-
             self.vacuum()
             return True
         except Exception as e:
@@ -926,36 +913,3 @@ class SqliteInterface:
         except sqlite3.Error as e:
             print(f"An error occurred while vacuuming the database: {e}")
             self.connection.rollback()
-
-
-################# Helper Functions #################
-def filter_sessions_with_non_max_counts(session_counts):
-    """
-    Filters out the sessions that have the largest count while maintaining the input order.
-
-    Parameters:
-        session_counts (dict): A dictionary with session IDs as keys and counts as values.
-
-    Returns:
-        tuple: A tuple containing:
-            - dict: A dictionary with sessions that do not have the maximum count.
-            - dict: A dictionary with sessions that have the maximum count, maintaining the input order.
-    """
-    if not session_counts:
-        return {}, {}
-
-    # Find the maximum count value
-    max_count = max(session_counts.values())
-
-    # Initialize dictionaries for filtered sessions and max count sessions
-    filtered_sessions = {}
-    max_count_sessions = {}
-
-    # Iterate over the dictionary to populate both dictionaries
-    for session, count in session_counts.items():
-        if count == max_count:
-            max_count_sessions[session] = count
-        else:
-            filtered_sessions[session] = count
-
-    return filtered_sessions, max_count_sessions
