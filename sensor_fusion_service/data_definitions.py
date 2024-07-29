@@ -4,6 +4,7 @@ from enum import Enum
 ### Tables in the Database
 class TableName(Enum):
     GNSS_TABLE = "gnss"
+    GNSS_PROCESSED_TABLE = "gnss_processed"
     GNSS_AUTH_TABLE = "gnss_auth"
     IMU_RAW_TABLE = "imu"
     IMU_PROCESSED_TABLE = "imu_processed"
@@ -15,6 +16,7 @@ class TableName(Enum):
 ### Tables in Purge Group
 PURGE_GROUP = [
     TableName.GNSS_TABLE.value,
+    TableName.GNSS_PROCESSED_TABLE.value,
     TableName.GNSS_AUTH_TABLE.value,
     TableName.IMU_RAW_TABLE.value,
     TableName.IMU_PROCESSED_TABLE.value,
@@ -92,29 +94,85 @@ class MagData:
 class GNSSData:
     def __init__(
         self,
-        lat,
-        lon,
-        alt,
-        speed,
-        heading,
-        heading_accuracy,
-        hdop,
-        gdop,
         system_time,
         time,
+        fix,
+        ttff,
+        latitude,
+        longitude,
+        altitude,
+        speed,
+        heading,
+        satellites_seen,
+        satellites_used,
+        eph,
+        horizontal_accuracy,
+        vertical_accuracy,
+        heading_accuracy,
+        speed_accuracy,
+        hdop,
+        vdop,
+        xdop,
+        ydop,
+        tdop,
+        pdop,
+        gdop,
+        rf_jamming_state,
+        rf_ant_status,
+        rf_ant_power,
+        rf_post_status,
+        rf_noise_per_ms,
+        rf_agc_cnt,
+        rf_jam_ind,
+        rf_ofs_i,
+        rf_mag_i,
+        rf_ofs_q,
+        gga,
+        rxm_measx,
+        actual_system_time,
+        unfiltered_latitude,
+        unfiltered_longitude,
         time_resolved,
         session,
     ):
-        self.lat = lat
-        self.lon = lon
-        self.alt = alt
-        self.speed = speed
-        self.heading = heading
-        self.heading_accuracy = heading_accuracy
-        self.hdop = hdop
-        self.gdop = gdop
         self.system_time = system_time
         self.time = time
+        self.fix = fix
+        self.ttff = ttff
+        self.latitude = latitude
+        self.longitude = longitude
+        self.altitude = altitude
+        self.speed = speed
+        self.heading = heading
+        self.satellites_seen = satellites_seen
+        self.satellites_used = satellites_used
+        self.eph = eph
+        self.horizontal_accuracy = horizontal_accuracy
+        self.vertical_accuracy = vertical_accuracy
+        self.heading_accuracy = heading_accuracy
+        self.speed_accuracy = speed_accuracy
+        self.hdop = hdop
+        self.vdop = vdop
+        self.xdop = xdop
+        self.ydop = ydop
+        self.tdop = tdop
+        self.pdop = pdop
+        self.gdop = gdop
+        self.rf_jamming_state = rf_jamming_state
+        self.rf_ant_status = rf_ant_status
+        self.rf_ant_power = rf_ant_power
+        self.rf_post_status = rf_post_status
+        self.rf_noise_per_ms = rf_noise_per_ms
+        self.rf_agc_cnt = rf_agc_cnt
+        self.rf_jam_ind = rf_jam_ind
+        self.rf_ofs_i = rf_ofs_i
+        self.rf_mag_i = rf_mag_i
+        self.rf_ofs_q = rf_ofs_q
+        self.gga = gga
+        self.rxm_measx = rxm_measx
+        self.actual_system_time = actual_system_time
+        self.unfiltered_latitude = unfiltered_latitude
+        self.unfiltered_longitude = unfiltered_longitude
         self.time_resolved = time_resolved
         self.session = session
 
