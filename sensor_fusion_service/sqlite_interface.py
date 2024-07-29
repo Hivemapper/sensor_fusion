@@ -261,123 +261,90 @@ class SqliteInterface:
             print(f"An error occurred while writing to the error table: {e}")
             self.connection.rollback()
 
-    @retry()
-    def insert_processed_imu_data(self, processed_data):
+    def insert_data(
+        self,
+        table_name,
+        data_list: list[
+            GNSSData | IMUData | ProcessedIMUData | MagData | FusedPositionData
+        ],
+    ):
         """
-        Inserts one or multiple rows of IMU data into the imu table.
+        Inserts a list of objects into the specified table.
 
         Args:
-            data (list): A list of dictionaries, each containing the data for a row.
+            table_name (str): The name of the table to insert data into.
+            data_list (list): A list of objects to be inserted into the table.
 
         Returns:
             bool: True if the insert was successful, False otherwise.
         """
-        try:
-            insert_query = """
-                INSERT INTO imu_processed (row_id, time, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, stationary, temperature, session)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """
-            # Prepare data for insertion
-            data_to_insert = [
-                (
-                    entry["row_id"],
-                    entry["time"],
-                    entry["acc_x"],
-                    entry["acc_y"],
-                    entry["acc_z"],
-                    entry["gyro_x"],
-                    entry["gyro_y"],
-                    entry["gyro_z"],
-                    entry["stationary"],
-                    entry["temperature"],
-                    entry["session"],
-                )
-                for entry in processed_data
-            ]
-            self.cursor.executemany(insert_query, data_to_insert)
-            self.connection.commit()
-            return True
-        except sqlite3.Error as e:
-            print(
-                f"An error occurred while inserting data into the processed_data table: {e}"
-            )
-            self.connection.rollback()
+        if not data_list:
+            print("No data to insert.")
             return False
 
-    def insert_processed_gnss_data(self, gnss_data_list: list[GNSSData]):
-        """
-        Inserts a list of GNSSData objects into the gnss table.
-        """
         try:
-            columns = vars(
-                gnss_data_list[0]
-            ).keys()  # Get columns from the first GNSSData object
+            # Get columns from the first object in the list
+            columns = vars(data_list[0]).keys()
             placeholders = ", ".join("?" * len(columns))
             column_names = ", ".join(columns)
 
-            insert_gnss_data_sql = f"""
-            INSERT INTO gnss_processed ({column_names}) 
+            insert_data_sql = f"""
+            INSERT INTO {table_name} ({column_names}) 
             VALUES ({placeholders})
             """
 
-            # Convert each GNSSData object to a tuple of values
-            values_list = [
-                tuple(vars(gnss_data).values()) for gnss_data in gnss_data_list
-            ]
+            # Convert each object to a tuple of values
+            values_list = [tuple(vars(data).values()) for data in data_list]
 
-            # Execute the insert statement for each GNSSData object
-            self.cursor.executemany(insert_gnss_data_sql, values_list)
+            # Execute the insert statement for each object
+            self.cursor.executemany(insert_data_sql, values_list)
 
             # Commit the changes to the database
             self.connection.commit()
+            return True
 
         except sqlite3.Error as e:
             # Handle any SQLite errors
-            print(f"An error occurred while inserting GNSS data: {e}")
-            self.connection.rollback()
-
-    @retry()
-    def insert_fused_position_data(self, fused_position_data):
-        """
-        Inserts one or multiple rows of fused position data into the fused position table.
-
-        Args:
-            data (list): A list of dictionaries, each containing the data for a row.
-
-        Returns:
-            bool: True if the insert was successful, False otherwise.
-        """
-        try:
-            insert_query = """
-                INSERT INTO fused_position (time, gnss_lat, gnss_lon, fused_lat, fused_lon, fused_heading, forward_velocity, yaw_rate, session)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """
-            # Prepare data for insertion
-            data_to_insert = [
-                (
-                    entry["time"],
-                    entry["gnss_lat"],
-                    entry["gnss_lon"],
-                    entry["fused_lat"],
-                    entry["fused_lon"],
-                    entry["fused_heading"],
-                    entry["forward_velocity"],
-                    entry["yaw_rate"],
-                    entry["session"],
-                )
-                for entry in fused_position_data
-            ]
-            self.cursor.executemany(insert_query, data_to_insert)
-            self.connection.commit()
-            return True
-        except sqlite3.Error as e:
-            print(
-                f"An error occurred while inserting data into the fused position table: {e}"
-            )
+            print(f"An error occurred while inserting data into {table_name}: {e}")
             self.connection.rollback()
             return False
 
     ################# Table Read Functions #################
+    @retry()
+    def table_columns_match(self, table_name, column_names):
+        """
+        Checks whether the table columns match the provided column names.
+
+        Parameters:
+        table_name (str): The name of the table to check.
+        column_names (list): A list of column names to match against the table columns.
+
+        Returns:
+        bool: True if the table columns match the provided column names, False otherwise.
+        """
+        try:
+            # SQL command to get the table schema
+            query = f"PRAGMA table_info({table_name});"
+
+            # Execute the SQL command
+            self.cursor.execute(query)
+
+            # Fetch the result
+            result = self.cursor.fetchall()
+
+            # Extract the column names from the result, ignoring 'id' column
+            table_columns = [row[1] for row in result if row[1] != "id"]
+
+            # Check if the provided column names match the table columns
+            return set(table_columns) == set(column_names)
+
+        except sqlite3.Error as e:
+            # Handle any SQLite errors
+            print(
+                f"An error occurred while checking the columns for table {table_name}: {e}"
+            )
+            return False
+
     @retry()
     def get_starting_row_id(self, table_name):
         """
