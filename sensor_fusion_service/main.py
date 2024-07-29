@@ -45,12 +45,22 @@ def main(db_path: str, debug: bool = False):
         db.drop_table(TableName.IMU_PROCESSED_TABLE.value)
         db.drop_table(TableName.FUSED_POSITION_TABLE.value)
         db.drop_table(TableName.SENSOR_FUSION_LOG_TABLE.value)
+        db.drop_table(TableName.GNSS_PROCESSED_TABLE.value)
     ########### Setup service tables and grab starting indexes for raw data processing ###########
     if not db.check_table_exists(TableName.SENSOR_FUSION_LOG_TABLE.value):
+        print(f"Table {TableName.SENSOR_FUSION_LOG_TABLE.value} does not exist")
         db.create_service_log_table()
+        print("Table created")
 
     if not db.check_table_exists(TableName.FUSED_POSITION_TABLE.value):
+        print(f"Table {TableName.FUSED_POSITION_TABLE.value} does not exist")
         db.create_fused_position_table()
+        print("Table created")
+
+    if not db.check_table_exists(TableName.GNSS_PROCESSED_TABLE.value):
+        print(f"Table {TableName.GNSS_PROCESSED_TABLE.value} does not exist")
+        db.create_processed_gnss_table()
+        print("Table created")
 
     # These indexes track what data has been processed
     raw_imu_index = -1
@@ -97,10 +107,6 @@ def main(db_path: str, debug: bool = False):
         if processed_imu_index == None:
             processed_imu_index = db.get_starting_row_id(TableName.IMU_RAW_TABLE.value)
             continue
-
-        # if debug:
-        # print("Raw Table Index: ", raw_imu_index)
-        # print("Processed Table Index: ", processed_imu_index)
 
         index_window_size = raw_imu_index - processed_imu_index
 
@@ -176,6 +182,7 @@ def main(db_path: str, debug: bool = False):
             try:
                 db.insert_processed_imu_data(processed_imu_data)
                 db.insert_fused_position_data(fused_position_data)
+                db.insert_processed_gnss_data(gnss_data)
             except Exception as e:
                 db.service_log_msg("Inserting Processed Data", str(e))
                 continue
@@ -191,54 +198,6 @@ def main(db_path: str, debug: bool = False):
             ## Only set next index if all data was processed
             if next_index != -1:
                 processed_imu_index = int(next_index)
-
-            ## Print out data for evaluation
-            # if debug:
-            #     print("Gathering GNSS Data for Analysis")
-            #     print("Starting Session: ", starting_session)
-            #     gnss_start_index = db.get_nearest_row_id_to_time(
-            #         "gnss", processedData[0]["time"], starting_session
-            #     )
-            #     gnss_end_index = db.get_nearest_row_id_to_time(
-            #         "gnss", processedData[-1]["time"], starting_session
-            #     )
-            #     print(
-            #         "GNSS Start Index: ",
-            #         gnss_start_index,
-            #         "GNSS End Index: ",
-            #         gnss_end_index,
-            #     )
-            #     gnss_data = db.get_gnss_by_row_range(gnss_start_index, gnss_end_index)
-            #     (
-            #         lat,
-            #         lon,
-            #         alt,
-            #         speed,
-            #         heading,
-            #         headingAccuracy,
-            #         hdop,
-            #         gdop,
-            #         gnss_system_time,
-            #         gnss_real_time,
-            #         time_resolved,
-            #         gnss_freq,
-            #     ) = extractgnss_data(gnss_data)
-            # plot_signal_over_time(gnss_system_time, speed, "Speed")
-            # plot_sensor_data(
-            #     imu_time,
-            #     acc_x,
-            #     acc_y,
-            #     acc_z,
-            #     "Accelerometer",
-            # )
-            # plot_sensor_data(
-            #     imu_time,
-            #     gyro_x,
-            #     gyro_y,
-            #     gyro_z,
-            #     "Gyroscope",
-            # )
-            # plt.show()
 
         if debug:
             print("Loop Counter: ", loop_counter)

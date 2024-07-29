@@ -72,12 +72,85 @@ class SqliteInterface:
 
     ################# Table Creation Functions #################
     @retry()
-    def create_processed_imu_table(self):
+    def create_processed_gnss_table(self):
         """
-        Creates the processed tables in the database if they do not already exist.
+        Creates the gnss_processed table in the database if it does not already exist
+        and creates an index on the system_time column.
         """
         try:
-            # SQL command to create the imu table if it doesn't already exist
+            create_gnss_table_sql = """
+            CREATE TABLE IF NOT EXISTS gnss_processed (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        system_time TIMESTAMP NOT NULL,
+                        time TIMESTAMP NOT NULL,
+                        fix TEXT NOT NULL,
+                        ttff INTEGER NOT NULL,
+                        latitude REAL NOT NULL,
+                        longitude REAL NOT NULL,
+                        altitude REAL NOT NULL,
+                        speed REAL NOT NULL,
+                        heading REAL NOT NULL,
+                        satellites_seen INTEGER NOT NULL,
+                        satellites_used INTEGER NOT NULL,
+                        eph INTEGER NOT NULL,
+                        horizontal_accuracy REAL NOT NULL,
+                        vertical_accuracy REAL NOT NULL,
+                        heading_accuracy REAL NOT NULL,
+                        speed_accuracy REAL NOT NULL,
+                        hdop REAL NOT NULL,
+                        vdop REAL NOT NULL,
+                        xdop REAL NOT NULL,
+                        ydop REAL NOT NULL,
+                        tdop REAL NOT NULL,
+                        pdop REAL NOT NULL,
+                        gdop REAL NOT NULL,
+                        rf_jamming_state TEXT NOT NULL,
+                        rf_ant_status TEXT NOT NULL,
+                        rf_ant_power TEXT NOT NULL,
+                        rf_post_status INTEGER NOT NULL,
+                        rf_noise_per_ms INTEGER NOT NULL,
+                        rf_agc_cnt INTEGER NOT NULL,
+                        rf_jam_ind INTEGER NOT NULL,
+                        rf_ofs_i INTEGER NOT NULL,
+                        rf_mag_i INTEGER NOT NULL,
+                        rf_ofs_q INTEGER NOT NULL,
+                        gga TEXT NOT NULL,
+                        rxm_measx TEXT NOT NULL,
+                        actual_system_time TIMESTAMP NOT NULL DEFAULT '0000-00-00 00:00:00',
+                        unfiltered_latitude REAL NOT NULL DEFAULT 0,
+                        unfiltered_longitude REAL NOT NULL DEFAULT 0,
+                        time_resolved INTEGER NOT NULL DEFAULT 0,
+                        session TEXT NOT NULL DEFAULT ''
+            );
+            """
+            # Execute the SQL command to create the gnss_processed table
+            self.cursor.execute(create_gnss_table_sql)
+
+            # SQL command to create an index on the system_time column
+            create_time_index_sql = """
+            CREATE INDEX IF NOT EXISTS gnss_time_idx ON gnss_processed(system_time);
+            """
+            # Execute the SQL command to create the index
+            self.cursor.execute(create_time_index_sql)
+
+            # Commit the changes to the database
+            self.connection.commit()
+
+        except sqlite3.Error as e:
+            # Handle any SQLite errors
+            print(
+                f"An error occurred while creating the gnss_processed table or index: {e}"
+            )
+            self.connection.rollback()
+
+    @retry()
+    def create_processed_imu_table(self):
+        """
+        Creates the processed IMU table in the database if it does not already exist,
+        and creates an index on the time column.
+        """
+        try:
+            # SQL command to create the imu_processed table if it doesn't already exist
             create_imu_table_sql = """
             CREATE TABLE IF NOT EXISTS imu_processed (
                         id INTEGER NOT NULL PRIMARY KEY,
@@ -94,15 +167,24 @@ class SqliteInterface:
                         session TEXT NOT NULL DEFAULT ''
             );
             """
-            # Execute the SQL command to create the imu table
+            # Execute the SQL command to create the imu_processed table
             self.cursor.execute(create_imu_table_sql)
+
+            # SQL command to create an index on the time column
+            create_time_index_sql = """
+            CREATE INDEX IF NOT EXISTS imu_time_idx ON imu_processed(time);
+            """
+            # Execute the SQL command to create the index
+            self.cursor.execute(create_time_index_sql)
 
             # Commit the changes to the database
             self.connection.commit()
 
         except sqlite3.Error as e:
             # Handle any SQLite errors
-            print(f"An error occurred while creating the imu table: {e}")
+            print(
+                f"An error occurred while creating the imu_processed table or index: {e}"
+            )
             self.connection.rollback()
 
     @retry()
@@ -221,6 +303,38 @@ class SqliteInterface:
             )
             self.connection.rollback()
             return False
+
+    def insert_processed_gnss_data(self, gnss_data_list: list[GNSSData]):
+        """
+        Inserts a list of GNSSData objects into the gnss table.
+        """
+        try:
+            columns = vars(
+                gnss_data_list[0]
+            ).keys()  # Get columns from the first GNSSData object
+            placeholders = ", ".join("?" * len(columns))
+            column_names = ", ".join(columns)
+
+            insert_gnss_data_sql = f"""
+            INSERT INTO gnss_processed ({column_names}) 
+            VALUES ({placeholders})
+            """
+
+            # Convert each GNSSData object to a tuple of values
+            values_list = [
+                tuple(vars(gnss_data).values()) for gnss_data in gnss_data_list
+            ]
+
+            # Execute the insert statement for each GNSSData object
+            self.cursor.executemany(insert_gnss_data_sql, values_list)
+
+            # Commit the changes to the database
+            self.connection.commit()
+
+        except sqlite3.Error as e:
+            # Handle any SQLite errors
+            print(f"An error occurred while inserting GNSS data: {e}")
+            self.connection.rollback()
 
     @retry()
     def insert_fused_position_data(self, fused_position_data):
@@ -381,7 +495,6 @@ class SqliteInterface:
         """
         Queries the GNSS table for GNSS data for rows within a specified ID range
         and sorts by row ID.
-        Columns queried: latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, system_time, time, time_resolved, session.
 
         Args:
             start_id (int): The starting row ID for the query.
@@ -393,29 +506,22 @@ class SqliteInterface:
         """
         try:
             query = f"""
-                        SELECT latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, system_time, time, time_resolved, session, id
+                        SELECT * 
                         FROM gnss
                         WHERE id BETWEEN ? AND ?
                         ORDER BY id {order}
                     """
             rows = self.cursor.execute(query, (start_id, end_id)).fetchall()
-            results = [
-                GNSSData(
-                    row[0],
-                    row[1],
-                    row[2],
-                    row[3],
-                    row[4],
-                    row[5],
-                    row[6],
-                    row[7],
-                    row[8],
-                    row[9],
-                    row[10],
-                    row[11],
-                )
-                for row in rows
-            ]
+
+            column_names = [description[0] for description in self.cursor.description]
+
+            # Remove the 'id' column name if it's present
+            if "id" in column_names:
+                column_names.remove("id")
+
+            # Map rows to GNSSData objects, excluding the 'id' column
+            results = [GNSSData(**dict(zip(column_names, row[1:]))) for row in rows]
+
             return results
 
         except sqlite3.Error as e:
