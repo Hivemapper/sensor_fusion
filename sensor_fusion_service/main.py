@@ -14,7 +14,13 @@ if env == "local":
         SqliteInterface,
         DATA_LOGGER_PATH,
     )
-    from sensor_fusion.sensor_fusion_service.data_definitions import TableName
+    from sensor_fusion.sensor_fusion_service.data_definitions import (
+        ProcessedIMUData,
+        FusedPositionData,
+        GNSSData,
+        TableName,
+        get_class_field_names,
+    )
 else:
     from processing import (
         grab_most_recent_raw_data_session,
@@ -25,7 +31,13 @@ else:
         SqliteInterface,
         DATA_LOGGER_PATH,
     )
-    from data_definitions import TableName
+    from data_definitions import (
+        ProcessedIMUData,
+        FusedPositionData,
+        GNSSData,
+        TableName,
+        get_class_field_names,
+    )
 
 IMU_SET_FREQUENCY = 100.0  # Hz
 AMOUNT_OF_DATA_IN_SECONDS = 60.0  # seconds
@@ -46,7 +58,7 @@ def main(db_path: str, debug: bool = False):
         db.drop_table(TableName.FUSED_POSITION_TABLE.value)
         db.drop_table(TableName.SENSOR_FUSION_LOG_TABLE.value)
         db.drop_table(TableName.GNSS_PROCESSED_TABLE.value)
-    ########### Setup service tables and grab starting indexes for raw data processing ###########
+    ########### Setup service tables, check columns, grab starting indexes for raw data processing ###########
     if not db.check_table_exists(TableName.SENSOR_FUSION_LOG_TABLE.value):
         print(f"Table {TableName.SENSOR_FUSION_LOG_TABLE.value} does not exist")
         db.create_service_log_table()
@@ -56,11 +68,30 @@ def main(db_path: str, debug: bool = False):
         print(f"Table {TableName.FUSED_POSITION_TABLE.value} does not exist")
         db.create_fused_position_table()
         print("Table created")
+    else:
+        # check if table has changed
+        if not db.table_columns_match(
+            TableName.FUSED_POSITION_TABLE.value,
+            get_class_field_names(FusedPositionData),
+        ):
+            print("Fused Position Table columns do not match")
+            db.drop_table(TableName.FUSED_POSITION_TABLE.value)
+            db.create_fused_position_table()
+            print("Table created")
 
     if not db.check_table_exists(TableName.GNSS_PROCESSED_TABLE.value):
         print(f"Table {TableName.GNSS_PROCESSED_TABLE.value} does not exist")
         db.create_processed_gnss_table()
         print("Table created")
+    else:
+        # check if table has changed
+        if not db.table_columns_match(
+            TableName.GNSS_PROCESSED_TABLE.value, get_class_field_names(GNSSData)
+        ):
+            print("GNSS Processed Table columns do not match")
+            db.drop_table(TableName.GNSS_PROCESSED_TABLE.value)
+            db.create_processed_gnss_table()
+            print("Table created")
 
     # These indexes track what data has been processed
     raw_imu_index = -1
@@ -72,7 +103,14 @@ def main(db_path: str, debug: bool = False):
         print("Does not exist, creating table")
         print("Starting Index: ", processed_imu_index)
     else:
-        print("Table Exists")
+        if not db.table_columns_match(
+            TableName.IMU_PROCESSED_TABLE.value, get_class_field_names(ProcessedIMUData)
+        ):
+            print("Processed IMU Table columns do not match")
+            db.drop_table(TableName.IMU_PROCESSED_TABLE.value)
+            db.create_processed_imu_table()
+            print("Table created")
+
         processed_imu_index = db.get_most_recent_row_id(
             TableName.IMU_PROCESSED_TABLE.value
         )
@@ -180,9 +218,11 @@ def main(db_path: str, debug: bool = False):
                     continue
             ########### Section for inserting processed Data ###########
             try:
-                db.insert_processed_imu_data(processed_imu_data)
-                db.insert_fused_position_data(fused_position_data)
-                db.insert_processed_gnss_data(gnss_data)
+                db.insert_data(TableName.IMU_PROCESSED_TABLE.value, processed_imu_data)
+                db.insert_data(
+                    TableName.FUSED_POSITION_TABLE.value, fused_position_data
+                )
+                db.insert_data(TableName.GNSS_PROCESSED_TABLE.value, gnss_data)
             except Exception as e:
                 db.service_log_msg("Inserting Processed Data", str(e))
                 continue
