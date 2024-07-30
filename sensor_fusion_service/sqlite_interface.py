@@ -3,6 +3,7 @@ import os
 import math
 import time
 from functools import wraps
+from typing import List, Union
 
 env = os.getenv("HIVE_ENV")
 
@@ -264,8 +265,8 @@ class SqliteInterface:
     def insert_data(
         self,
         table_name,
-        data_list: list[
-            GNSSData | IMUData | ProcessedIMUData | MagData | FusedPositionData
+        data_list: List[
+            Union[GNSSData, IMUData, ProcessedIMUData, MagData, FusedPositionData]
         ],
     ):
         """
