@@ -12,12 +12,17 @@ if env == "local":
         calculate_stationary_status,
     )
     from sensor_fusion.sensor_fusion_service.conversions import (
-        lists_to_dicts,
         lla_to_enu,
         enu_to_lla,
         convert_time_to_epoch,
     )
-    from sensor_fusion.sensor_fusion_service.data_definitions import IMUData, GNSSData
+    from sensor_fusion.sensor_fusion_service.data_definitions import (
+        IMUData,
+        GNSSData,
+        ProcessedIMUData,
+        FusedPositionData,
+        convert_columns_to_class_instances,
+    )
     from sensor_fusion.sensor_fusion_service.filter import ExtendedKalmanFilter as EKF
 else:
     from telemetry_math import (
@@ -26,12 +31,17 @@ else:
         calculate_stationary_status,
     )
     from conversions import (
-        lists_to_dicts,
         lla_to_enu,
         enu_to_lla,
         convert_time_to_epoch,
     )
-    from data_definitions import IMUData, GNSSData
+    from data_definitions import (
+        IMUData,
+        GNSSData,
+        ProcessedIMUData,
+        FusedPositionData,
+        convert_columns_to_class_instances,
+    )
     from filter import ExtendedKalmanFilter as EKF
 
 
@@ -125,56 +135,36 @@ def process_raw_data(
     fused_lats = fused_position[1, :]
 
     ########### Package Processed Data ###########
-    processed_imu_keys = [
-        "acc_x",
-        "acc_y",
-        "acc_z",
-        "gyro_x",
-        "gyro_y",
-        "gyro_z",
-        "stationary",
-        "time",
-        "temperature",
-        "session",
-        "row_id",
-    ]
-    processed_imu_data = lists_to_dicts(
-        processed_imu_keys,
-        acc_x,
-        acc_y,
-        acc_z,
-        gyro_x,
-        gyro_y,
-        gyro_z,
-        stationary,
-        imu_time,
-        temperature,
-        imu_session,
-        row_id,
+    processed_imu_dict = {
+        "acc_x": acc_x,
+        "acc_y": acc_y,
+        "acc_z": acc_z,
+        "gyro_x": gyro_x,
+        "gyro_y": gyro_y,
+        "gyro_z": gyro_z,
+        "stationary": stationary,
+        "time": imu_time,
+        "temperature": temperature,
+        "session": imu_session,
+        "row_id": row_id,
+    }
+    processed_imu_data = convert_columns_to_class_instances(
+        processed_imu_dict, ProcessedIMUData
     )
 
-    fused_keys = [
-        "gnss_lat",
-        "gnss_lon",
-        "fused_lat",
-        "fused_lon",
-        "fused_heading",
-        "forward_velocity",
-        "yaw_rate",
-        "time",
-        "session",
-    ]
-    fused_position_data = lists_to_dicts(
-        fused_keys,
-        lat,
-        lon,
-        fused_lats,
-        fused_lons,
-        fused_heading,
-        forward_vel,
-        yaw_rates,
-        gnss_system_time,
-        gnss_session,
+    fused_position_dict = {
+        "gnss_lat": lat,
+        "gnss_lon": lon,
+        "fused_lat": fused_lats,
+        "fused_lon": fused_lons,
+        "fused_heading": fused_heading,
+        "forward_velocity": forward_vel,
+        "yaw_rate": yaw_rates,
+        "time": gnss_system_time,
+        "session": gnss_session,
+    }
+    fused_position_data = convert_columns_to_class_instances(
+        fused_position_dict, FusedPositionData
     )
 
     if debug:

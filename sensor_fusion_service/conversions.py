@@ -174,22 +174,3 @@ def convert_epoch_to_time(epoch_ms):
     # Convert to datetime object
     datetime_obj = datetime.fromtimestamp(epoch_s, tz=timezone.utc)
     return datetime_obj.strftime("%Y-%m-%d %H:%M:%S.%f")
-
-
-#################### Data Conversions Functions ####################
-
-
-def lists_to_dicts(keys, *lists):
-    # Find the length of the shortest list to avoid index errors
-    min_length = min(len(lst) for lst in lists)
-
-    # Ensure the number of keys matches the number of input lists
-    if len(keys) != len(lists):
-        raise ValueError("Number of keys must match the number of input lists")
-
-    # Create a list of dictionaries using the specified keys and elements at each index from the input lists
-    result = [
-        dict(zip(keys, values)) for values in zip(*[lst[:min_length] for lst in lists])
-    ]
-
-    return result

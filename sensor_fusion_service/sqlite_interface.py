@@ -3,6 +3,7 @@ import os
 import math
 import time
 from functools import wraps
+from typing import List, Union
 
 env = os.getenv("HIVE_ENV")
 
@@ -72,12 +73,85 @@ class SqliteInterface:
 
     ################# Table Creation Functions #################
     @retry()
-    def create_processed_imu_table(self):
+    def create_processed_gnss_table(self):
         """
-        Creates the processed tables in the database if they do not already exist.
+        Creates the gnss_processed table in the database if it does not already exist
+        and creates an index on the system_time column.
         """
         try:
-            # SQL command to create the imu table if it doesn't already exist
+            create_gnss_table_sql = """
+            CREATE TABLE IF NOT EXISTS gnss_processed (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        system_time TIMESTAMP NOT NULL,
+                        time TIMESTAMP NOT NULL,
+                        fix TEXT NOT NULL,
+                        ttff INTEGER NOT NULL,
+                        latitude REAL NOT NULL,
+                        longitude REAL NOT NULL,
+                        altitude REAL NOT NULL,
+                        speed REAL NOT NULL,
+                        heading REAL NOT NULL,
+                        satellites_seen INTEGER NOT NULL,
+                        satellites_used INTEGER NOT NULL,
+                        eph INTEGER NOT NULL,
+                        horizontal_accuracy REAL NOT NULL,
+                        vertical_accuracy REAL NOT NULL,
+                        heading_accuracy REAL NOT NULL,
+                        speed_accuracy REAL NOT NULL,
+                        hdop REAL NOT NULL,
+                        vdop REAL NOT NULL,
+                        xdop REAL NOT NULL,
+                        ydop REAL NOT NULL,
+                        tdop REAL NOT NULL,
+                        pdop REAL NOT NULL,
+                        gdop REAL NOT NULL,
+                        rf_jamming_state TEXT NOT NULL,
+                        rf_ant_status TEXT NOT NULL,
+                        rf_ant_power TEXT NOT NULL,
+                        rf_post_status INTEGER NOT NULL,
+                        rf_noise_per_ms INTEGER NOT NULL,
+                        rf_agc_cnt INTEGER NOT NULL,
+                        rf_jam_ind INTEGER NOT NULL,
+                        rf_ofs_i INTEGER NOT NULL,
+                        rf_mag_i INTEGER NOT NULL,
+                        rf_ofs_q INTEGER NOT NULL,
+                        gga TEXT NOT NULL,
+                        rxm_measx TEXT NOT NULL,
+                        actual_system_time TIMESTAMP NOT NULL DEFAULT '0000-00-00 00:00:00',
+                        unfiltered_latitude REAL NOT NULL DEFAULT 0,
+                        unfiltered_longitude REAL NOT NULL DEFAULT 0,
+                        time_resolved INTEGER NOT NULL DEFAULT 0,
+                        session TEXT NOT NULL DEFAULT ''
+            );
+            """
+            # Execute the SQL command to create the gnss_processed table
+            self.cursor.execute(create_gnss_table_sql)
+
+            # SQL command to create an index on the system_time column
+            create_time_index_sql = """
+            CREATE INDEX IF NOT EXISTS gnss_time_idx ON gnss_processed(system_time);
+            """
+            # Execute the SQL command to create the index
+            self.cursor.execute(create_time_index_sql)
+
+            # Commit the changes to the database
+            self.connection.commit()
+
+        except sqlite3.Error as e:
+            # Handle any SQLite errors
+            print(
+                f"An error occurred while creating the gnss_processed table or index: {e}"
+            )
+            self.connection.rollback()
+
+    @retry()
+    def create_processed_imu_table(self):
+        """
+        Creates the processed IMU table in the database if it does not already exist,
+        and creates an index on the time column.
+        """
+        try:
+            # SQL command to create the imu_processed table if it doesn't already exist
             create_imu_table_sql = """
             CREATE TABLE IF NOT EXISTS imu_processed (
                         id INTEGER NOT NULL PRIMARY KEY,
@@ -94,15 +168,24 @@ class SqliteInterface:
                         session TEXT NOT NULL DEFAULT ''
             );
             """
-            # Execute the SQL command to create the imu table
+            # Execute the SQL command to create the imu_processed table
             self.cursor.execute(create_imu_table_sql)
+
+            # SQL command to create an index on the time column
+            create_time_index_sql = """
+            CREATE INDEX IF NOT EXISTS imu_time_idx ON imu_processed(time);
+            """
+            # Execute the SQL command to create the index
+            self.cursor.execute(create_time_index_sql)
 
             # Commit the changes to the database
             self.connection.commit()
 
         except sqlite3.Error as e:
             # Handle any SQLite errors
-            print(f"An error occurred while creating the imu table: {e}")
+            print(
+                f"An error occurred while creating the imu_processed table or index: {e}"
+            )
             self.connection.rollback()
 
     @retry()
@@ -129,6 +212,41 @@ class SqliteInterface:
         except sqlite3.Error as e:
             # Handle any SQLite errors
             print(f"An error occurred while creating the error log table: {e}")
+            self.connection.rollback()
+
+    def create_error_logs_table(self):
+        """
+        Creates the error_logs table in the database if it does not already exist,
+        and creates an index on the system_time column.
+        """
+        try:
+            # SQL command to create the error_logs table if it doesn't already exist
+            create_error_logs_table_sql = """
+            CREATE TABLE IF NOT EXISTS error_logs (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        system_time TIMESTAMP NOT NULL,
+                        service_name TEXT NOT NULL,
+                        message TEXT NOT NULL
+            );
+            """
+            # Execute the SQL command to create the error_logs table
+            self.cursor.execute(create_error_logs_table_sql)
+
+            # SQL command to create an index on the system_time column
+            create_time_index_sql = """
+            CREATE INDEX IF NOT EXISTS error_time_idx ON error_logs(system_time);
+            """
+            # Execute the SQL command to create the index
+            self.cursor.execute(create_time_index_sql)
+
+            # Commit the changes to the database
+            self.connection.commit()
+
+        except sqlite3.Error as e:
+            # Handle any SQLite errors
+            print(
+                f"An error occurred while creating the error_logs table or index: {e}"
+            )
             self.connection.rollback()
 
     def create_fused_position_table(self):
@@ -179,91 +297,90 @@ class SqliteInterface:
             print(f"An error occurred while writing to the error table: {e}")
             self.connection.rollback()
 
-    @retry()
-    def insert_processed_imu_data(self, processed_data):
+    def insert_data(
+        self,
+        table_name,
+        data_list: List[
+            Union[GNSSData, IMUData, ProcessedIMUData, MagData, FusedPositionData]
+        ],
+    ):
         """
-        Inserts one or multiple rows of IMU data into the imu table.
+        Inserts a list of objects into the specified table.
 
         Args:
-            data (list): A list of dictionaries, each containing the data for a row.
+            table_name (str): The name of the table to insert data into.
+            data_list (list): A list of objects to be inserted into the table.
 
         Returns:
             bool: True if the insert was successful, False otherwise.
         """
-        try:
-            insert_query = """
-                INSERT INTO imu_processed (row_id, time, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, stationary, temperature, session)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """
-            # Prepare data for insertion
-            data_to_insert = [
-                (
-                    entry["row_id"],
-                    entry["time"],
-                    entry["acc_x"],
-                    entry["acc_y"],
-                    entry["acc_z"],
-                    entry["gyro_x"],
-                    entry["gyro_y"],
-                    entry["gyro_z"],
-                    entry["stationary"],
-                    entry["temperature"],
-                    entry["session"],
-                )
-                for entry in processed_data
-            ]
-            self.cursor.executemany(insert_query, data_to_insert)
-            self.connection.commit()
-            return True
-        except sqlite3.Error as e:
-            print(
-                f"An error occurred while inserting data into the processed_data table: {e}"
-            )
-            self.connection.rollback()
+        if not data_list:
+            print("No data to insert.")
             return False
 
-    @retry()
-    def insert_fused_position_data(self, fused_position_data):
-        """
-        Inserts one or multiple rows of fused position data into the fused position table.
-
-        Args:
-            data (list): A list of dictionaries, each containing the data for a row.
-
-        Returns:
-            bool: True if the insert was successful, False otherwise.
-        """
         try:
-            insert_query = """
-                INSERT INTO fused_position (time, gnss_lat, gnss_lon, fused_lat, fused_lon, fused_heading, forward_velocity, yaw_rate, session)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            # Get columns from the first object in the list
+            columns = vars(data_list[0]).keys()
+            placeholders = ", ".join("?" * len(columns))
+            column_names = ", ".join(columns)
+
+            insert_data_sql = f"""
+            INSERT INTO {table_name} ({column_names}) 
+            VALUES ({placeholders})
             """
-            # Prepare data for insertion
-            data_to_insert = [
-                (
-                    entry["time"],
-                    entry["gnss_lat"],
-                    entry["gnss_lon"],
-                    entry["fused_lat"],
-                    entry["fused_lon"],
-                    entry["fused_heading"],
-                    entry["forward_velocity"],
-                    entry["yaw_rate"],
-                    entry["session"],
-                )
-                for entry in fused_position_data
-            ]
-            self.cursor.executemany(insert_query, data_to_insert)
+
+            # Convert each object to a tuple of values
+            values_list = [tuple(vars(data).values()) for data in data_list]
+
+            # Execute the insert statement for each object
+            self.cursor.executemany(insert_data_sql, values_list)
+
+            # Commit the changes to the database
             self.connection.commit()
             return True
+
         except sqlite3.Error as e:
-            print(
-                f"An error occurred while inserting data into the fused position table: {e}"
-            )
+            # Handle any SQLite errors
+            print(f"An error occurred while inserting data into {table_name}: {e}")
             self.connection.rollback()
             return False
 
     ################# Table Read Functions #################
+    @retry()
+    def table_columns_match(self, table_name, column_names):
+        """
+        Checks whether the table columns match the provided column names.
+
+        Parameters:
+        table_name (str): The name of the table to check.
+        column_names (list): A list of column names to match against the table columns.
+
+        Returns:
+        bool: True if the table columns match the provided column names, False otherwise.
+        """
+        try:
+            # SQL command to get the table schema
+            query = f"PRAGMA table_info({table_name});"
+
+            # Execute the SQL command
+            self.cursor.execute(query)
+
+            # Fetch the result
+            result = self.cursor.fetchall()
+
+            # Extract the column names from the result, ignoring 'id' column
+            table_columns = [row[1] for row in result if row[1] != "id"]
+
+            # Check if the provided column names match the table columns
+            return set(table_columns) == set(column_names)
+
+        except sqlite3.Error as e:
+            # Handle any SQLite errors
+            print(
+                f"An error occurred while checking the columns for table {table_name}: {e}"
+            )
+            return False
+
     @retry()
     def get_starting_row_id(self, table_name):
         """
@@ -381,7 +498,6 @@ class SqliteInterface:
         """
         Queries the GNSS table for GNSS data for rows within a specified ID range
         and sorts by row ID.
-        Columns queried: latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, system_time, time, time_resolved, session.
 
         Args:
             start_id (int): The starting row ID for the query.
@@ -393,29 +509,22 @@ class SqliteInterface:
         """
         try:
             query = f"""
-                        SELECT latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, system_time, time, time_resolved, session, id
+                        SELECT * 
                         FROM gnss
                         WHERE id BETWEEN ? AND ?
                         ORDER BY id {order}
                     """
             rows = self.cursor.execute(query, (start_id, end_id)).fetchall()
-            results = [
-                GNSSData(
-                    row[0],
-                    row[1],
-                    row[2],
-                    row[3],
-                    row[4],
-                    row[5],
-                    row[6],
-                    row[7],
-                    row[8],
-                    row[9],
-                    row[10],
-                    row[11],
-                )
-                for row in rows
-            ]
+
+            column_names = [description[0] for description in self.cursor.description]
+
+            # Remove the 'id' column name if it's present
+            if "id" in column_names:
+                column_names.remove("id")
+
+            # Map rows to GNSSData objects, excluding the 'id' column
+            results = [GNSSData(**dict(zip(column_names, row[1:]))) for row in rows]
+
             return results
 
         except sqlite3.Error as e:
@@ -881,6 +990,7 @@ class SqliteInterface:
                     )
             else:
                 # Check for session consistency remove sessions that are not in all tables
+                # This uses python 3.7+ behavior of keeping insertion order in dictionaries
                 unique_sessions = list(sessions_count.keys())
                 if len(unique_sessions) > 1:
                     oldest_session = unique_sessions[0]

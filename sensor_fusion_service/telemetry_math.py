@@ -170,9 +170,9 @@ def extract_gnss_data(data: List[GNSSData]):
     gnss_real_time, time_resolved, time, session = [], [], [], []
 
     for point in data:
-        lat.append(point.lat)
-        lon.append(point.lon)
-        alt.append(point.alt)
+        lat.append(point.latitude)
+        lon.append(point.longitude)
+        alt.append(point.altitude)
         speed.append(point.speed)
         heading.append(point.heading)
         heading_accuracy.append(point.heading_accuracy)
