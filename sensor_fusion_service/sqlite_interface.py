@@ -214,6 +214,41 @@ class SqliteInterface:
             print(f"An error occurred while creating the error log table: {e}")
             self.connection.rollback()
 
+    def create_error_logs_table(self):
+        """
+        Creates the error_logs table in the database if it does not already exist,
+        and creates an index on the system_time column.
+        """
+        try:
+            # SQL command to create the error_logs table if it doesn't already exist
+            create_error_logs_table_sql = """
+            CREATE TABLE IF NOT EXISTS error_logs (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        system_time TIMESTAMP NOT NULL,
+                        service_name TEXT NOT NULL,
+                        message TEXT NOT NULL
+            );
+            """
+            # Execute the SQL command to create the error_logs table
+            self.cursor.execute(create_error_logs_table_sql)
+
+            # SQL command to create an index on the system_time column
+            create_time_index_sql = """
+            CREATE INDEX IF NOT EXISTS error_time_idx ON error_logs(system_time);
+            """
+            # Execute the SQL command to create the index
+            self.cursor.execute(create_time_index_sql)
+
+            # Commit the changes to the database
+            self.connection.commit()
+
+        except sqlite3.Error as e:
+            # Handle any SQLite errors
+            print(
+                f"An error occurred while creating the error_logs table or index: {e}"
+            )
+            self.connection.rollback()
+
     def create_fused_position_table(self):
         """
         Creates the fused position table in the database if it does not already exist.
