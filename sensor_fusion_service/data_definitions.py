@@ -9,8 +9,9 @@ class TableName(Enum):
     IMU_RAW_TABLE = "imu"
     IMU_PROCESSED_TABLE = "imu_processed"
     MAG_TABLE = "magnetometer"
-    SENSOR_FUSION_LOG_TABLE = "sensor_fusion_logs"
     FUSED_POSITION_TABLE = "fused_position"
+    SENSOR_FUSION_LOG_TABLE = "sensor_fusion_logs"
+    ERROR_LOG_TABLE = "error_logs"
 
 
 ### Tables in Purge Group

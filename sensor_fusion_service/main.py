@@ -49,8 +49,7 @@ print(f"Minimum Data Points: {MIN_DATA_POINTS}")
 print(f"Loop Sleep Time: {LOOP_SLEEP_TIME}")
 
 
-def main(db_path: str, debug: bool = False):
-    db = SqliteInterface(db_path)
+def table_and_initial_index_setup(db: SqliteInterface, debug: bool = False):
     # Remove the processed table if it exists to start fresh for debugging
     if debug:
         print("Debugging Mode")
@@ -59,6 +58,11 @@ def main(db_path: str, debug: bool = False):
         db.drop_table(TableName.SENSOR_FUSION_LOG_TABLE.value)
         db.drop_table(TableName.GNSS_PROCESSED_TABLE.value)
     ########### Setup service tables, check columns, grab starting indexes for raw data processing ###########
+    if not db.check_table_exists(TableName.ERROR_LOG_TABLE.value):
+        print(f"Table {TableName.ERROR_LOG_TABLE.value} does not exist")
+        db.create_error_logs_table()
+        print("Table created")
+
     if not db.check_table_exists(TableName.SENSOR_FUSION_LOG_TABLE.value):
         print(f"Table {TableName.SENSOR_FUSION_LOG_TABLE.value} does not exist")
         db.create_service_log_table()
@@ -94,7 +98,6 @@ def main(db_path: str, debug: bool = False):
             print("Table created")
 
     # These indexes track what data has been processed
-    raw_imu_index = -1
     processed_imu_index = -1
     # Setup Processed IMU Data Table
     if not db.check_table_exists(TableName.IMU_PROCESSED_TABLE.value):
@@ -114,7 +117,14 @@ def main(db_path: str, debug: bool = False):
         processed_imu_index = db.get_most_recent_row_id(
             TableName.IMU_PROCESSED_TABLE.value
         )
+    return processed_imu_index
 
+
+def main(db_path: str, debug: bool = False):
+    db = SqliteInterface(db_path)
+    # Setup tables and indexes for processing
+    processed_imu_index = table_and_initial_index_setup(db, debug)
+    raw_imu_index = -1
     ### Setup Variables needed between loops
     state_values = {
         "current_velocity": 0.0,
@@ -136,7 +146,7 @@ def main(db_path: str, debug: bool = False):
         ### Find where to start raw index
         raw_imu_index = db.get_most_recent_row_id(TableName.IMU_RAW_TABLE.value)
         # Catch for raw_imu table being empty for any reason, allow time for more values to be inserted
-        if raw_imu_index == None:
+        if raw_imu_index == None or raw_imu_index == -1:
             time.sleep(LOOP_SLEEP_TIME)
             continue
 
