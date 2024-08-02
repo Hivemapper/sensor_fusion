@@ -13,7 +13,7 @@ from sensor_fusion.offline_code.utils.plotting_code import (
 from sensor_fusion.offline_code.utils.process_validate_dbs import (
     validate_db_file,
     process_db_file_for_individual_drives,
-    aggregate_data,
+    transform_class_list_to_dict,
 )
 from sensor_fusion.offline_code.utils.utils import valid_dir, valid_file
 
@@ -34,11 +34,15 @@ def main(file_path):
         useable_sessions = process_db_file_for_individual_drives(file_path, camera_type)
         for session in useable_sessions:
             ##### Ingest Data #####
-            raw_imu = aggregate_data(useable_sessions[session]["imu_data"])
-            processed_imu = aggregate_data(
+            raw_imu = transform_class_list_to_dict(
+                useable_sessions[session]["imu_data"]
+            )
+            processed_imu = transform_class_list_to_dict(
                 useable_sessions[session]["imu_processed_data"]
             )
-            gnss_data = aggregate_data(useable_sessions[session]["gnss_data"])
+            gnss_data = transform_class_list_to_dict(
+                useable_sessions[session]["gnss_data"]
+            )
             raw_imu_len = len(raw_imu)
             processed_imu_len = len(processed_imu)
             gnss_len = len(gnss_data)
@@ -104,22 +108,22 @@ def main(file_path):
 
             ### Downsample raw data
             acc_x_down = np.interp(
-                gnss_data["system_time"], processed_imu["time"], processed_imu["ax"]
+                gnss_data["system_time"], processed_imu["time"], processed_imu["acc_x"]
             )
             acc_y_down = np.interp(
-                gnss_data["system_time"], processed_imu["time"], processed_imu["ay"]
+                gnss_data["system_time"], processed_imu["time"], processed_imu["acc_y"]
             )
             acc_z_down = np.interp(
-                gnss_data["system_time"], processed_imu["time"], processed_imu["az"]
+                gnss_data["system_time"], processed_imu["time"], processed_imu["acc_z"]
             )
             gyro_x_down = np.interp(
-                gnss_data["system_time"], processed_imu["time"], processed_imu["gx"]
+                gnss_data["system_time"], processed_imu["time"], processed_imu["gyro_x"]
             )
             gyro_y_down = np.interp(
-                gnss_data["system_time"], processed_imu["time"], processed_imu["gy"]
+                gnss_data["system_time"], processed_imu["time"], processed_imu["gyro_y"]
             )
             gyro_z_down = np.interp(
-                gnss_data["system_time"], processed_imu["time"], processed_imu["gz"]
+                gnss_data["system_time"], processed_imu["time"], processed_imu["gyro_z"]
             )
 
             stationary_down *= 0.5
