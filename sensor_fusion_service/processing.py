@@ -1,20 +1,38 @@
+import os
 from typing import List
 import numpy as np
 from scipy.interpolate import CubicSpline
 
-from sensor_fusion.sensor_fusion_service.telemetry_math import (
-    extract_smooth_imu_data,
-    extract_gnss_data,
-    calculate_stationary_status,
-)
-from sensor_fusion.sensor_fusion_service.conversions import (
-    lists_to_dicts,
-    lla_to_enu,
-    enu_to_lla,
-    convert_time_to_epoch,
-)
-from sensor_fusion.sensor_fusion_service.data_definitions import IMUData, GNSSData
-from sensor_fusion.sensor_fusion_service.filter import ExtendedKalmanFilter as EKF
+env = os.getenv("HIVE_ENV")
+
+if env == "local":
+    from sensor_fusion.sensor_fusion_service.telemetry_math import (
+        extract_smooth_imu_data,
+        extract_gnss_data,
+        calculate_stationary_status,
+    )
+    from sensor_fusion.sensor_fusion_service.conversions import (
+        lists_to_dicts,
+        lla_to_enu,
+        enu_to_lla,
+        convert_time_to_epoch,
+    )
+    from sensor_fusion.sensor_fusion_service.data_definitions import IMUData, GNSSData
+    from sensor_fusion.sensor_fusion_service.filter import ExtendedKalmanFilter as EKF
+else:
+    from telemetry_math import (
+        extract_smooth_imu_data,
+        extract_gnss_data,
+        calculate_stationary_status,
+    )
+    from conversions import (
+        lists_to_dicts,
+        lla_to_enu,
+        enu_to_lla,
+        convert_time_to_epoch,
+    )
+    from data_definitions import IMUData, GNSSData
+    from filter import ExtendedKalmanFilter as EKF
 
 
 ##### Constants for Kalman Filter #####

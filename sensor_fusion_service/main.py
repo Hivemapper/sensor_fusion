@@ -1,17 +1,31 @@
+import os
 import time
 import argparse
-# import matplotlib.pyplot as plt
 
-from sensor_fusion.sensor_fusion_service.processing import (
-    grab_most_recent_raw_data_session,
-    process_raw_data,
-    remove_duplicate_imu_data,
-)
-from sensor_fusion.sensor_fusion_service.sqlite_interface import (
-    SqliteInterface,
-    DATA_LOGGER_PATH,
-)
-from sensor_fusion.sensor_fusion_service.data_definitions import TableName
+env = os.getenv("HIVE_ENV")
+
+if env == "local":
+    from sensor_fusion.sensor_fusion_service.processing import (
+        grab_most_recent_raw_data_session,
+        process_raw_data,
+        remove_duplicate_imu_data,
+    )
+    from sensor_fusion.sensor_fusion_service.sqlite_interface import (
+        SqliteInterface,
+        DATA_LOGGER_PATH,
+    )
+    from sensor_fusion.sensor_fusion_service.data_definitions import TableName
+else:
+    from processing import (
+        grab_most_recent_raw_data_session,
+        process_raw_data,
+        remove_duplicate_imu_data,
+    )
+    from sqlite_interface import (
+        SqliteInterface,
+        DATA_LOGGER_PATH,
+    )
+    from data_definitions import TableName
 
 IMU_SET_FREQUENCY = 100.0  # Hz
 AMOUNT_OF_DATA_IN_SECONDS = 60.0  # seconds
@@ -61,23 +75,27 @@ def main(db_path: str, debug: bool = False):
     ############################### Main Service Loop ###############################
     if debug:
         loop_counter = 0
+
+    loop_time = time.time()
     while 1:
         ########### Purge DB if required ###########
-        # TODO: Modify to not be every loop, this can be done much less frequently
-        db.purge()
+        # Check every minute if the db needs to be purged
+        if loop_time + 60 < time.time():
+            db.purge()
+            loop_time = time.time()
 
         ########### Check for enough Data for Processing ###########
         ### Find where to start raw index
         raw_imu_index = db.get_most_recent_row_id(TableName.IMU_RAW_TABLE.value)
-        # Catch in case either index is None
+        # Catch for raw_imu table being empty for any reason, allow time for more values to be inserted
         if raw_imu_index == None:
             time.sleep(LOOP_SLEEP_TIME)
             continue
 
+        # Catch for imu_processed table being empty for any reason,
+        # assume the first value in the raw table is the starting point
         if processed_imu_index == None:
-            processed_imu_index = db.get_most_recent_row_id(
-                TableName.IMU_PROCESSED_TABLE.value
-            )
+            processed_imu_index = db.get_starting_row_id(TableName.IMU_RAW_TABLE.value)
             continue
 
         # if debug:

@@ -1,14 +1,18 @@
+import os
 import math
 import numpy as np
 from typing import List
 
-from sensor_fusion.sensor_fusion_service.filter import butter_lowpass_filter
-from sensor_fusion.sensor_fusion_service.data_definitions import IMUData, GNSSData
-from sensor_fusion.sensor_fusion_service.conversions import convert_time_to_epoch
+env = os.getenv("HIVE_ENV")
 
-
-# from plottingCode import plot_signals_over_time, plot_sensor_data, plot_signal_over_time
-# import matplotlib.pyplot as plt
+if env == "local":
+    from sensor_fusion.sensor_fusion_service.filter import butter_lowpass_filter
+    from sensor_fusion.sensor_fusion_service.data_definitions import IMUData, GNSSData
+    from sensor_fusion.sensor_fusion_service.conversions import convert_time_to_epoch
+else:
+    from filter import butter_lowpass_filter
+    from data_definitions import IMUData, GNSSData
+    from conversions import convert_time_to_epoch
 
 
 # Constants for threshold-based window averaging

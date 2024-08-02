@@ -4,14 +4,26 @@ import math
 import time
 from functools import wraps
 
-from sensor_fusion.sensor_fusion_service.data_definitions import (
-    IMUData,
-    ProcessedIMUData,
-    GNSSData,
-    MagData,
-    FusedPositionData,
-    PURGE_GROUP,
-)
+env = os.getenv("HIVE_ENV")
+
+if env == "local":
+    from sensor_fusion.sensor_fusion_service.data_definitions import (
+        IMUData,
+        ProcessedIMUData,
+        GNSSData,
+        MagData,
+        FusedPositionData,
+        PURGE_GROUP,
+    )
+else:
+    from data_definitions import (
+        IMUData,
+        ProcessedIMUData,
+        GNSSData,
+        MagData,
+        FusedPositionData,
+        PURGE_GROUP,
+    )
 
 # For SQLite interface
 DATA_LOGGER_PATH = "/data/recording/data-logger.v1.4.5.db"
@@ -845,6 +857,8 @@ class SqliteInterface:
             if self.get_db_size() < DB_SIZE_LIMIT:
                 return True
 
+            print("Purging the database to reduce the file size.")
+
             # sessions here are oldest to newest, important to keep this in mind
             sessions_count = {}
             table_row_counts = {}
@@ -867,25 +881,15 @@ class SqliteInterface:
                     )
             else:
                 # Check for session consistency remove sessions that are not in all tables
-                sessions_to_remove, consistent_sessions = (
-                    filter_sessions_with_non_max_counts(sessions_count)
-                )
-                for session in sessions_to_remove:
+                unique_sessions = list(sessions_count.keys())
+                if len(unique_sessions) > 1:
+                    oldest_session = unique_sessions[0]
                     for table in PURGE_GROUP:
                         self.purge_rows_by_value(
                             table,
                             "session",
-                            session,
+                            oldest_session,
                         )
-                # If all sessions are consistent, then we can purge the oldest session
-                oldest_session = list(consistent_sessions.keys())[0]
-                for table in PURGE_GROUP:
-                    self.purge_rows_by_value(
-                        table,
-                        "session",
-                        oldest_session,
-                    )
-
             self.vacuum()
             return True
         except Exception as e:
@@ -909,36 +913,3 @@ class SqliteInterface:
         except sqlite3.Error as e:
             print(f"An error occurred while vacuuming the database: {e}")
             self.connection.rollback()
-
-
-################# Helper Functions #################
-def filter_sessions_with_non_max_counts(session_counts):
-    """
-    Filters out the sessions that have the largest count while maintaining the input order.
-
-    Parameters:
-        session_counts (dict): A dictionary with session IDs as keys and counts as values.
-
-    Returns:
-        tuple: A tuple containing:
-            - dict: A dictionary with sessions that do not have the maximum count.
-            - dict: A dictionary with sessions that have the maximum count, maintaining the input order.
-    """
-    if not session_counts:
-        return {}, {}
-
-    # Find the maximum count value
-    max_count = max(session_counts.values())
-
-    # Initialize dictionaries for filtered sessions and max count sessions
-    filtered_sessions = {}
-    max_count_sessions = {}
-
-    # Iterate over the dictionary to populate both dictionaries
-    for session, count in session_counts.items():
-        if count == max_count:
-            max_count_sessions[session] = count
-        else:
-            filtered_sessions[session] = count
-
-    return filtered_sessions, max_count_sessions
