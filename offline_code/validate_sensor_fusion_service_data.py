@@ -15,7 +15,7 @@ from sensor_fusion.offline_code.utils.plotting_code import (
 from sensor_fusion.offline_code.utils.process_validate_dbs import (
     validate_db_file,
     process_db_file_for_individual_drives,
-    aggregate_data,
+    transform_class_list_to_dict,
 )
 from sensor_fusion.sensor_fusion_service.processing import cubic_spline_interpolation
 from sensor_fusion.offline_code.utils.utils import (
@@ -52,12 +52,18 @@ def main(file_path):
     try:
         useable_sessions = process_db_file_for_individual_drives(file_path, camera_type)
         for session in useable_sessions:
-            raw_imu = aggregate_data(useable_sessions[session]["imu_data"])
-            processed_imu = aggregate_data(
+            raw_imu = transform_class_list_to_dict(
+                useable_sessions[session]["imu_data"]
+            )
+            processed_imu = transform_class_list_to_dict(
                 useable_sessions[session]["imu_processed_data"]
             )
-            gnss_data = aggregate_data(useable_sessions[session]["gnss_data"])
-            fused_data = aggregate_data(useable_sessions[session]["fused_data"])
+            gnss_data = transform_class_list_to_dict(
+                useable_sessions[session]["gnss_data"]
+            )
+            fused_data = transform_class_list_to_dict(
+                useable_sessions[session]["fused_data"]
+            )
             ## Filter out duplicates
             fused_data = remove_duplicate_data(fused_data, "time")
             raw_imu_len = len(raw_imu)
@@ -151,18 +157,18 @@ def main(file_path):
 
             plot_sensor_data(
                 processed_imu["time"],
-                processed_imu["ax"],
-                processed_imu["ay"],
-                processed_imu["az"],
+                processed_imu["acc_x"],
+                processed_imu["acc_y"],
+                processed_imu["acc_z"],
                 sensor_name="Processed ACCEL",
                 title="Processed ACCEL Data",
                 downsample_factor=5,
             )
             plot_sensor_data(
                 processed_imu["time"],
-                processed_imu["gx"],
-                processed_imu["gy"],
-                processed_imu["gz"],
+                processed_imu["gyro_x"],
+                processed_imu["gyro_y"],
+                processed_imu["gyro_z"],
                 sensor_name="Processed GYRO",
                 title="Processed GYRO Data",
                 downsample_factor=1,
@@ -175,12 +181,12 @@ def main(file_path):
             plot_sensor_timestamps(sensor_data)
 
             get_imu_offsets(
-                processed_imu["ax"],
-                processed_imu["ay"],
-                processed_imu["az"],
-                processed_imu["gx"],
-                processed_imu["gy"],
-                processed_imu["gz"],
+                processed_imu["acc_x"],
+                processed_imu["acc_y"],
+                processed_imu["acc_z"],
+                processed_imu["gyro_x"],
+                processed_imu["gyro_y"],
+                processed_imu["gyro_z"],
                 processed_imu["time"],
                 gnss_data["system_time"],
                 gnss_data["speed"],

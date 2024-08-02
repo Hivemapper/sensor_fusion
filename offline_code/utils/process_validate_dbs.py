@@ -4,6 +4,14 @@ from multiprocessing import Process, Queue
 from sensor_fusion.sensor_fusion_service.sqlite_interface import (
     SqliteInterface,
 )
+from sensor_fusion.sensor_fusion_service.data_definitions import (
+    GNSSData,
+    IMUData,
+    MagData,
+    ProcessedIMUData,
+    FusedPositionData,
+    TableName,
+)
 
 SESSION_DATA_MINIMUM = 500  # number of points
 
@@ -18,14 +26,18 @@ def validate_db_file(file_path):
         camera_type = "hdc"
         sql_db = SqliteInterface(file_path)
         # Check for HDCS
-        if sql_db.check_table_exists("magnetometer"):
-            mag_data = sql_db.queryAllMagnetometer()
+        if sql_db.check_table_exists(TableName.MAG_TABLE.value):
+            print(file_path, "HDCS detected")
+            mag_data = sql_db.read_all_table_data(TableName.MAG_TABLE.value, MagData)
+            print(f"Mag data: {len(mag_data)}")
             if len(mag_data) > 0:
                 camera_type = "hdcs"
 
         # Attempt to pull all data from the database to check for malformed data
-        gnss_data = sql_db.queryAllGnss()
-        imu_data = sql_db.queryAllImu()
+        gnss_data = sql_db.read_all_table_data(TableName.GNSS_TABLE.value, GNSSData)
+        print(f"GNSS data: {len(gnss_data)}")
+        imu_data = sql_db.read_all_table_data(TableName.IMU_RAW_TABLE.value, IMUData)
+        print(f"IMU data: {len(imu_data)}")
         if len(gnss_data) == 0 or len(imu_data) == 0:
             print(file_path, "No data in one of the tables")
             return None, None
@@ -125,18 +137,22 @@ def process_db_file_for_individual_drives(filename, camera_type):
     imu_processed = False
     fused_table = False
     if camera_type == "hdcs":
-        gnss_data = sql_db.queryAllGnss()
-        imu_data = sql_db.queryAllImu()
-        mag_data = sql_db.queryAllMagnetometer()
-        if sql_db.check_table_exists("imu_processed"):
+        gnss_data = sql_db.read_all_table_data(TableName.GNSS_TABLE.value, GNSSData)
+        imu_data = sql_db.read_all_table_data(TableName.IMU_RAW_TABLE.value, IMUData)
+        mag_data = sql_db.read_all_table_data(TableName.MAG_TABLE.value, MagData)
+        if sql_db.check_table_exists(TableName.IMU_PROCESSED_TABLE.value):
             imu_processed = True
-            imu_processed_data = sql_db.queryAllProcessedImu()
+            imu_processed_data = sql_db.read_all_table_data(
+                TableName.IMU_PROCESSED_TABLE.value, ProcessedIMUData
+            )
             if len(imu_processed_data) == 0:
                 print("No processed IMU data found")
             # Get fused position data
-        if sql_db.check_table_exists("fused_position"):
+        if sql_db.check_table_exists(TableName.FUSED_POSITION_TABLE.value):
             fused_table = True
-            fused_position_data = sql_db.queryAllFusedPosition()
+            fused_position_data = sql_db.read_all_table_data(
+                TableName.FUSED_POSITION_TABLE.value, FusedPositionData
+            )
             if len(fused_position_data) == 0:
                 print("No fused position data found")
         # get unique session ids for all three
@@ -212,10 +228,12 @@ def process_db_file_for_individual_drives(filename, camera_type):
                 }
     # HDC route
     else:
-        gnss_data = sql_db.queryAllGnss()
-        imu_data = sql_db.queryAllImu()
-        if sql_db.check_table_exists("imu_processed"):
-            imu_processed_data = sql_db.queryAllProcessedImu()
+        gnss_data = sql_db.read_all_table_data(TableName.GNSS_TABLE.value, GNSSData)
+        imu_data = sql_db.read_all_table_data(TableName.IMU_RAW_TABLE.value, IMUData)
+        if sql_db.check_table_exists(TableName.IMU_PROCESSED_TABLE.value):
+            imu_processed_data = sql_db.read_all_table_data(
+                TableName.IMU_PROCESSED_TABLE.value, ProcessedIMUData
+            )
             if len(imu_processed_data) == 0:
                 print("No processed IMU data found")
         # get unique session ids for all three
@@ -236,7 +254,7 @@ def process_db_file_for_individual_drives(filename, camera_type):
         for session in common_sessions:
             gnss_data_session = [d for d in gnss_data if d.session == session]
             imu_data_session = [d for d in imu_data if d.session == session]
-            if sql_db.check_table_exists("imu_processed"):
+            if sql_db.check_table_exists(TableName.IMU_PROCESSED_TABLE.value):
                 imu_processed_data_session = [
                     d for d in imu_processed_data if d.session == session
                 ]
@@ -261,11 +279,11 @@ def process_db_file_for_individual_drives(filename, camera_type):
 
 
 ### Helper Functions
-def aggregate_data(data_list):
+def transform_class_list_to_dict(data_list):
     """
-    Aggregates data from a list of IMUData or ProcessedIMUData objects into a dictionary.
+    Aggregates data from a list of Class objects into a dictionary.
     Args:
-        data_list (list): A list of IMUData or ProcessedIMUData objects.
+        data_list (list): A list of Class objects.
     Returns:
         dict: A dictionary with keys as attribute names and values as lists of attribute values.
     """
@@ -285,31 +303,3 @@ def aggregate_data(data_list):
             result[key].append(value)
 
     return result
-
-
-def transform_list_of_dicts(list_of_dicts):
-    """
-    Transforms a list of dictionaries into a dictionary of lists, where each key from the dictionaries
-    maps to a list of values from the original dictionaries.
-
-    Parameters:
-    list_of_dicts (list): A list of dictionaries with the same keys.
-
-    Returns:
-    dict: A dictionary where each key maps to a list of values from the original dictionaries.
-    """
-    if not list_of_dicts:
-        return {}
-
-    # Extract all keys from the dictionaries
-    keys = list_of_dicts[0].keys()
-
-    # Initialize a dictionary where each key maps to an empty list
-    transformed_dict = {key: [] for key in keys}
-
-    # Iterate through the list of dictionaries
-    for dictionary in list_of_dicts:
-        for key in dictionary:
-            transformed_dict[key].append(dictionary[key])
-
-    return transformed_dict

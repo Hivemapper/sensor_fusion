@@ -155,7 +155,6 @@ class SqliteInterface:
             create_imu_table_sql = """
             CREATE TABLE IF NOT EXISTS imu_processed (
                         id INTEGER NOT NULL PRIMARY KEY,
-                        row_id INTEGER NOT NULL,
                         time TIMESTAMP NOT NULL,
                         acc_x REAL NOT NULL,
                         acc_y REAL NOT NULL,
@@ -675,174 +674,50 @@ class SqliteInterface:
             print(f"An error occurred while retrieving unique values: {e}")
             return []
 
-    ####  All Data Query Functions ####
-    def queryAllImu(self, order: str = "ASC"):
+    def read_all_table_data(
+        self,
+        table_name: str,
+        data_class: Union[
+            GNSSData, IMUData, ProcessedIMUData, MagData, FusedPositionData
+        ],
+    ) -> List[Union[GNSSData, IMUData, ProcessedIMUData, MagData, FusedPositionData]]:
         """
-        Queries the whole IMU table for accelerometer and gyroscope data and sorts by row ID.
-        Columns queried acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, time
+        Reads all rows from the specified table and returns them as a list of objects of the specified class.
+
         Args:
-            order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'DESC'.
+            table_name (str): The name of the table to read data from.
+            data_class: The class type to instantiate for each row.
+
         Returns:
-            list: A list of IMUData objects containing the accelerometer and gyroscope data.
+            list: A list of objects of the specified class type.
         """
+        # print(f"Reading data from {table_name} table...")
         try:
-            query = """
-                        SELECT acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, time, temperature, session, id
-                        FROM imu 
-                        ORDER BY id {}
-                    """.format(order)
-            rows = self.cursor.execute(query).fetchall()
-            results = [
-                IMUData(
-                    row[0],
-                    row[1],
-                    row[2],
-                    row[3],
-                    row[4],
-                    row[5],
-                    row[6],
-                    row[7],
-                    row[8],
-                    row[9],
+            # SQL command to select all rows from the table
+            select_data_sql = f"SELECT * FROM {table_name} ORDER BY id ASC;"
+
+            # Execute the SQL command
+            self.cursor.execute(select_data_sql)
+            rows = self.cursor.fetchall()
+            # print(f"Read {len(rows)} rows from {table_name} table.")
+
+            # Get the column names from the cursor description
+            column_names = [desc[0] for desc in self.cursor.description]
+            # print(f"Column names: {column_names}")
+
+            # Convert each row to an instance of the data_class, excluding the 'id' column
+            data_list = [
+                data_class(
+                    **{col: val for col, val in zip(column_names, row) if col != "id"}
                 )
                 for row in rows
             ]
-            return results
-        except sqlite3.Error as e:
-            print(f"SQLite error: {e}")
-            return []
 
-    def queryAllProcessedImu(self, order: str = "ASC"):
-        """
-        Queries the whole IMU table for accelerometer and gyroscope data and sorts by row ID.
-        Columns queried acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, time
-        Args:
-            order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'DESC'.
-        Returns:
-            list: A list of ProcessedIMUData objects containing the accelerometer and gyroscope data.
-        """
-        try:
-            query = """
-                        SELECT acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, time, temperature, session, stationary, id
-                        FROM imu_processed 
-                        ORDER BY id {}
-                    """.format(order)
-            rows = self.cursor.execute(query).fetchall()
-            results = [
-                ProcessedIMUData(
-                    row[0],
-                    row[1],
-                    row[2],
-                    row[3],
-                    row[4],
-                    row[5],
-                    row[6],
-                    row[7],
-                    row[8],
-                    row[9],
-                    row[10],
-                )
-                for row in rows
-            ]
-            return results
-        except sqlite3.Error as e:
-            print(f"SQLite error: {e}")
-            return []
+            return data_list
 
-    def queryAllMagnetometer(self, order: str = "ASC"):
-        """
-        Queries the magnetometer table for magnetometer data and sorts by row ID.
-        Columns queried mag_x, mag_y, mag_z, system_time
-        Args:
-            order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'DESC'.
-        Returns:
-            list: A list of MagnetometerData objects containing the magnetometer data.
-        """
-        try:
-            query = """
-                        SELECT mag_x, mag_y, mag_z, system_time, session
-                        FROM magnetometer
-                        ORDER BY id {}
-                    """.format(order)
-            rows = self.cursor.execute(query).fetchall()
-            results = [MagData(row[0], row[1], row[2], row[3], row[4]) for row in rows]
-            return results
         except sqlite3.Error as e:
-            print(f"SQLite error: {e}")
-            return []
-
-    def queryAllGnss(self, order: str = "ASC"):
-        """
-        Queries the GNSS table for all GNSS data and sorts by row ID.
-        Columns queried latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, system_time, time, time_resolved, session
-        Args:
-            order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'DESC'.
-        Returns:
-            list: A list of GNSSData objects containing the GNSS data.
-        """
-        try:
-            query = """
-                        SELECT latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, system_time, time, time_resolved, session
-                        FROM gnss 
-                        ORDER BY id {}
-                    """.format(order)
-            rows = self.cursor.execute(query).fetchall()
-            results = [
-                GNSSData(
-                    row[0],
-                    row[1],
-                    row[2],
-                    row[3],
-                    row[4],
-                    row[5],
-                    row[6],
-                    row[7],
-                    row[8],
-                    row[9],
-                    row[10],
-                    row[11],
-                )
-                for row in rows
-            ]
-            return results
-        except sqlite3.Error as e:
-            print(f"SQLite error: {e}")
-            return []
-
-    def queryAllFusedPosition(self, order: str = "ASC"):
-        """
-        Queries the whole fused_position table and sorts by row ID.
-        Columns queried: id, time, gnss_lat, gnss_lon, fused_lat, fused_lon, fused_heading, forward_velocity, yaw_rate, session.
-        Args:
-            order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'ASC'.
-        Returns:
-            list: A list of FusedPositionData objects containing the fused position data.
-        """
-        try:
-            query = """
-                        SELECT id, time, gnss_lat, gnss_lon, fused_lat, fused_lon, fused_heading, forward_velocity, yaw_rate, session
-                        FROM fused_position 
-                        ORDER BY id {}
-                    """.format(order)
-            rows = self.cursor.execute(query).fetchall()
-            results = [
-                FusedPositionData(
-                    row[0],  # id
-                    row[1],  # time
-                    row[2],  # gnss_lat
-                    row[3],  # gnss_lon
-                    row[4],  # fused_lat
-                    row[5],  # fused_lon
-                    row[6],  # fused_heading
-                    row[7],  # forward_velocity
-                    row[8],  # yaw_rate
-                    row[9],  # session
-                )
-                for row in rows
-            ]
-            return results
-        except sqlite3.Error as e:
-            print(f"SQLite error: {e}")
+            # Handle any SQLite errors
+            print(f"An error occurred while reading data from {table_name}: {e}")
             return []
 
     ################# Table Level Functions #################

@@ -28,23 +28,32 @@ PURGE_GROUP = [
 
 ############## Data Classes ##############
 class IMUData:
-    def __init__(self, ax, ay, az, gx, gy, gz, time, temperature, session, row_id):
-        self.ax = ax
-        self.ay = ay
-        self.az = az
-        self.gx = gx
-        self.gy = gy
-        self.gz = gz
+    def __init__(
+        self,
+        time,
+        acc_x,
+        acc_y,
+        acc_z,
+        gyro_x,
+        gyro_y,
+        gyro_z,
+        temperature,
+        session,
+    ):
         self.time = time
+        self.acc_x = acc_x
+        self.acc_y = acc_y
+        self.acc_z = acc_z
+        self.gyro_x = gyro_x
+        self.gyro_y = gyro_y
+        self.gyro_z = gyro_z
         self.temperature = temperature
         self.session = session
-        self.row_id = row_id
 
 
 class ProcessedIMUData:
     def __init__(
         self,
-        row_id,
         time,
         acc_x,
         acc_y,
@@ -56,7 +65,6 @@ class ProcessedIMUData:
         temperature,
         session,
     ):
-        self.row_id = row_id
         self.time = time
         self.acc_x = acc_x
         self.acc_y = acc_y
@@ -70,11 +78,11 @@ class ProcessedIMUData:
 
 
 class MagData:
-    def __init__(self, mx, my, mz, time, session):
-        self.mx = mx
-        self.my = my
-        self.mz = mz
-        self.time = time
+    def __init__(self, system_time, mag_x, mag_y, mag_z, session):
+        self.mag_x = mag_x
+        self.mag_y = mag_y
+        self.mag_z = mag_z
+        self.system_time = system_time
         self.session = session
 
 
