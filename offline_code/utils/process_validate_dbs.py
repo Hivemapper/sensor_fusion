@@ -10,6 +10,7 @@ from sensor_fusion.sensor_fusion_service.data_definitions import (
     MagData,
     ProcessedIMUData,
     FusedPositionData,
+    FrameKMData,
     TableName,
 )
 
@@ -34,7 +35,7 @@ def validate_db_file(file_path):
                 camera_type = "hdcs"
 
         # Attempt to pull all data from the database to check for malformed data
-        gnss_data = sql_db.read_all_table_data(TableName.GNSS_TABLE.value, GNSSData)
+        gnss_data = sql_db.read_all_table_data(TableName.GNSS_RAW_TABLE.value, GNSSData)
         print(f"GNSS data: {len(gnss_data)}")
         imu_data = sql_db.read_all_table_data(TableName.IMU_RAW_TABLE.value, IMUData)
         print(f"IMU data: {len(imu_data)}")
@@ -137,9 +138,19 @@ def process_db_file_for_individual_drives(filename, camera_type):
     imu_processed = False
     fused_table = False
     if camera_type == "hdcs":
-        gnss_data = sql_db.read_all_table_data(TableName.GNSS_TABLE.value, GNSSData)
+        gnss_data = sql_db.read_all_table_data(TableName.GNSS_RAW_TABLE.value, GNSSData)
         imu_data = sql_db.read_all_table_data(TableName.IMU_RAW_TABLE.value, IMUData)
         mag_data = sql_db.read_all_table_data(TableName.MAG_TABLE.value, MagData)
+        packed_framekm_data = sql_db.read_all_table_data(
+            TableName.PACKED_FRAMEKM_TABLE.value, FrameKMData
+        )
+        if sql_db.check_table_exists(TableName.GNSS_PROCESSED_TABLE.value):
+            gnss_processed = True
+            gnss_processed_data = sql_db.read_all_table_data(
+                TableName.GNSS_PROCESSED_TABLE.value, GNSSData
+            )
+            if len(gnss_processed_data) == 0:
+                print("No processed GNSS data found")
         if sql_db.check_table_exists(TableName.IMU_PROCESSED_TABLE.value):
             imu_processed = True
             imu_processed_data = sql_db.read_all_table_data(
@@ -179,6 +190,10 @@ def process_db_file_for_individual_drives(filename, camera_type):
             gnss_data_session = [d for d in gnss_data if d.session == session]
             imu_data_session = [d for d in imu_data if d.session == session]
             mag_data_session = [d for d in mag_data if d.session == session]
+            if gnss_processed:
+                gnss_processed_data_session = [
+                    d for d in gnss_processed_data if d.session == session
+                ]
             if imu_processed:
                 imu_processed_data_session = [
                     d for d in imu_processed_data if d.session == session
@@ -206,16 +221,18 @@ def process_db_file_for_individual_drives(filename, camera_type):
                     "imu_processed_data": imu_processed_data_session,
                     "mag_data": mag_data_session,
                 }
-            elif imu_processed and fused_table:
+            elif gnss_processed and imu_processed and fused_table:
                 print(
-                    f"  Session: {session}, gnss: {len(gnss_data_session)}, raw_imu: {len(imu_data_session)}, processed_imu: {len(imu_processed_data_session)}, mag: {len(mag_data_session)}, fused: {len(fused_position_data_session)}"
+                    f"  Session: {session}, gnss: {len(gnss_data_session)}, raw_imu: {len(imu_data_session)}, processed_gnss: {len(gnss_processed_data_session)}, processed_imu: {len(imu_processed_data_session)}, mag: {len(mag_data_session)}, fused: {len(fused_position_data_session)}"
                 )
                 useable_sessions[session] = {
                     "gnss_data": gnss_data_session,
                     "imu_data": imu_data_session,
+                    "gnss_processed_data": gnss_processed_data_session,
                     "imu_processed_data": imu_processed_data_session,
                     "mag_data": mag_data_session,
                     "fused_data": fused_position_data_session,
+                    "packed_framekm_data": packed_framekm_data,
                 }
             else:
                 print(
@@ -228,7 +245,7 @@ def process_db_file_for_individual_drives(filename, camera_type):
                 }
     # HDC route
     else:
-        gnss_data = sql_db.read_all_table_data(TableName.GNSS_TABLE.value, GNSSData)
+        gnss_data = sql_db.read_all_table_data(TableName.GNSS_RAW_TABLE.value, GNSSData)
         imu_data = sql_db.read_all_table_data(TableName.IMU_RAW_TABLE.value, IMUData)
         if sql_db.check_table_exists(TableName.IMU_PROCESSED_TABLE.value):
             imu_processed_data = sql_db.read_all_table_data(

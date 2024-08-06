@@ -17,6 +17,7 @@ if env == "local":
     from sensor_fusion.sensor_fusion_service.data_definitions import (
         ProcessedIMUData,
         FusedPositionData,
+        IMUData,
         GNSSData,
         TableName,
         get_class_field_names,
@@ -34,6 +35,7 @@ else:
     from data_definitions import (
         ProcessedIMUData,
         FusedPositionData,
+        IMUData,
         GNSSData,
         TableName,
         get_class_field_names,
@@ -166,8 +168,11 @@ def main(db_path: str, debug: bool = False):
             furthest_imu_index = processed_imu_index + MIN_DATA_POINTS
 
             try:
-                raw_imu_data = db.get_raw_imu_by_row_range(
-                    processed_imu_index, furthest_imu_index
+                raw_imu_data = db.get_data_by_row_range(
+                    TableName.IMU_RAW_TABLE.value,
+                    IMUData,
+                    processed_imu_index,
+                    furthest_imu_index,
                 )
                 ## If there is no data to process, skip the processing step, increment the processed_imu_index, and continue
                 if len(raw_imu_data) == 0:
@@ -190,12 +195,17 @@ def main(db_path: str, debug: bool = False):
                 imu_chunk_end_time = raw_imu_data[-1].time
 
                 gnss_start_index = db.get_nearest_row_id_to_time(
-                    TableName.GNSS_TABLE.value, imu_chunk_start_time, imu_session
+                    TableName.GNSS_RAW_TABLE.value, imu_chunk_start_time, imu_session
                 )
                 gnss_end_index = db.get_nearest_row_id_to_time(
-                    TableName.GNSS_TABLE.value, imu_chunk_end_time, imu_session
+                    TableName.GNSS_RAW_TABLE.value, imu_chunk_end_time, imu_session
                 )
-                gnss_data = db.get_gnss_by_row_range(gnss_start_index, gnss_end_index)
+                gnss_data = db.get_data_by_row_range(
+                    TableName.GNSS_RAW_TABLE.value,
+                    GNSSData,
+                    gnss_start_index,
+                    gnss_end_index,
+                )
 
             except Exception as e:
                 db.service_log_msg("Retrieving IMU or GNSS Data", str(e))
