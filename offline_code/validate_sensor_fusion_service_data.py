@@ -61,33 +61,45 @@ def main(file_path):
             gnss_data = transform_class_list_to_dict(
                 useable_sessions[session]["gnss_data"]
             )
+            processed_gnss = transform_class_list_to_dict(
+                useable_sessions[session]["gnss_processed_data"]
+            )
             fused_data = transform_class_list_to_dict(
                 useable_sessions[session]["fused_data"]
+            )
+            packed_framekm_data = transform_class_list_to_dict(
+                useable_sessions[session]["packed_framekm_data"]
             )
             ## Filter out duplicates
             fused_data = remove_duplicate_data(fused_data, "time")
             raw_imu_len = len(raw_imu)
             processed_imu_len = len(processed_imu)
             gnss_len = len(gnss_data)
+            processed_gnss_len = len(processed_gnss)
             fused_len = len(fused_data)
             if (
                 raw_imu_len == 0
                 or processed_imu_len == 0
                 or gnss_len == 0
+                or processed_gnss_len == 0
                 or fused_len == 0
             ):
                 print(
-                    f"Session: {session} -> Missing Data -- gnss: {gnss_len} raw_imu: {raw_imu_len} processed_imu: {processed_imu_len} fused: {fused_len}"
+                    f"Session: {session} -> Missing Data -- gnss: {gnss_len} processed_gnss: {processed_gnss_len} raw_imu: {raw_imu_len} processed_imu: {processed_imu_len} fused: {fused_len}"
                 )
                 continue
 
             print(
-                f"Session: {session} -> gnss: {len(gnss_data['system_time'])} raw_imu: {len(raw_imu['time'])} processed_imu: {len(processed_imu['time'])}"
+                f"Session: {session} -> gnss: {gnss_len} processed_gnss: {processed_gnss_len} raw_imu: {raw_imu_len} processed_imu: {raw_imu_len} fused: {fused_len}"
             )
             # Convert time to epoch for all values
             for i in range(len(gnss_data["system_time"])):
                 gnss_data["system_time"][i] = convert_time_to_epoch(
                     gnss_data["system_time"][i]
+                )
+            for i in range(len(processed_gnss["system_time"])):
+                processed_gnss["system_time"][i] = convert_time_to_epoch(
+                    processed_gnss["system_time"][i]
                 )
             for i in range(len(raw_imu["time"])):
                 raw_imu["time"][i] = convert_time_to_epoch(raw_imu["time"][i])
@@ -97,110 +109,124 @@ def main(file_path):
                     processed_imu["time"][i]
                 )
 
-            print("Downsampling data")
-            # downsample stationary to compare with GNSS
-            stationary_down = np.interp(
-                gnss_data["system_time"],
-                processed_imu["time"],
-                processed_imu["stationary"],
-            )
+            # print("Downsampling data")
+            # # downsample stationary to compare with GNSS
+            # stationary_down = np.interp(
+            #     gnss_data["system_time"],
+            #     processed_imu["time"],
+            #     processed_imu["stationary"],
+            # )
 
-            plot_signals_over_time(
-                gnss_data["system_time"],
-                gnss_data["speed"],
-                stationary_down,
-                downsample_factor=1,
-                signal1_label="Speed",
-                signal2_label="Stationary",
-            )
-            forward_vel = np.interp(
-                gnss_data["system_time"],
-                fused_data["time"],
-                fused_data["forward_velocity"],
-            )
+            # plot_signals_over_time(
+            #     gnss_data["system_time"],
+            #     gnss_data["speed"],
+            #     stationary_down,
+            #     downsample_factor=1,
+            #     signal1_label="Speed",
+            #     signal2_label="Stationary",
+            # )
+            # forward_vel = np.interp(
+            #     gnss_data["system_time"],
+            #     fused_data["time"],
+            #     fused_data["forward_velocity"],
+            # )
 
-            plot_signals_over_time(
-                gnss_data["system_time"],
-                gnss_data["speed"],
-                forward_vel,
-                downsample_factor=1,
-                signal1_label="Speed",
-                signal2_label="Processed Speed",
-            )
+            # plot_signals_over_time(
+            #     gnss_data["system_time"],
+            #     gnss_data["speed"],
+            #     forward_vel,
+            #     downsample_factor=1,
+            #     signal1_label="Speed",
+            #     signal2_label="Processed Speed",
+            # )
 
             # Match fused heading to gnss heading
-            fused_heading = np.interp(
-                gnss_data["system_time"],
-                fused_data["time"],
-                fused_data["fused_heading"],
-            )
-            fused_heading = np.rad2deg(fused_heading)
-            fused_heading = [
-                heading_val + 360 if heading_val < 0 else heading_val
-                for heading_val in fused_heading
-            ]
+            # fused_heading = np.interp(
+            #     gnss_data["system_time"],
+            #     fused_data["time"],
+            #     fused_data["fused_heading"],
+            # )
+            # fused_heading = np.rad2deg(fused_heading)
+            # fused_heading = [
+            #     heading_val + 360 if heading_val < 0 else heading_val
+            #     for heading_val in fused_heading
+            # ]
 
-            plot_signals_over_time(
-                gnss_data["system_time"],
-                gnss_data["heading"],
-                fused_heading,
-                downsample_factor=10,
-                signal1_label="Heading",
-                signal2_label="Processed Heading",
-            )
+            # plot_signals_over_time(
+            #     gnss_data["system_time"],
+            #     gnss_data["heading"],
+            #     fused_heading,
+            #     downsample_factor=10,
+            #     signal1_label="Heading",
+            #     signal2_label="Processed Heading",
+            # )
 
-            # plot yaw rates
-            yaw_rate_deg = fused_data["yaw_rate"]
-            plot_signal_over_time(
-                fused_data["time"], yaw_rate_deg, signal_label="Yaw Rate"
-            )
+            # # plot yaw rates
+            # yaw_rate_deg = fused_data["yaw_rate"]
+            # plot_signal_over_time(
+            #     fused_data["time"], yaw_rate_deg, signal_label="Yaw Rate"
+            # )
 
-            plot_sensor_data(
-                processed_imu["time"],
-                processed_imu["acc_x"],
-                processed_imu["acc_y"],
-                processed_imu["acc_z"],
-                sensor_name="Processed ACCEL",
-                title="Processed ACCEL Data",
-                downsample_factor=5,
-            )
-            plot_sensor_data(
-                processed_imu["time"],
-                processed_imu["gyro_x"],
-                processed_imu["gyro_y"],
-                processed_imu["gyro_z"],
-                sensor_name="Processed GYRO",
-                title="Processed GYRO Data",
-                downsample_factor=1,
-            )
+            # plot_sensor_data(
+            #     processed_imu["time"],
+            #     processed_imu["acc_x"],
+            #     processed_imu["acc_y"],
+            #     processed_imu["acc_z"],
+            #     sensor_name="Processed ACCEL",
+            #     title="Processed ACCEL Data",
+            #     downsample_factor=5,
+            # )
+            # plot_sensor_data(
+            #     processed_imu["time"],
+            #     processed_imu["gyro_x"],
+            #     processed_imu["gyro_y"],
+            #     processed_imu["gyro_z"],
+            #     sensor_name="Processed GYRO",
+            #     title="Processed GYRO Data",
+            #     downsample_factor=1,
+            # )
             sensor_data = {
                 "gnss": gnss_data["system_time"],
+                "processed_gnss": processed_gnss["system_time"],
                 "raw_imu": raw_imu["time"],
                 "processed_imu": processed_imu["time"],
             }
             plot_sensor_timestamps(sensor_data)
 
-            get_imu_offsets(
-                processed_imu["acc_x"],
-                processed_imu["acc_y"],
-                processed_imu["acc_z"],
-                processed_imu["gyro_x"],
-                processed_imu["gyro_y"],
-                processed_imu["gyro_z"],
-                processed_imu["time"],
-                gnss_data["system_time"],
-                gnss_data["speed"],
-            )
+            # get_imu_offsets(
+            #     processed_imu["acc_x"],
+            #     processed_imu["acc_y"],
+            #     processed_imu["acc_z"],
+            #     processed_imu["gyro_x"],
+            #     processed_imu["gyro_y"],
+            #     processed_imu["gyro_z"],
+            #     processed_imu["time"],
+            #     gnss_data["system_time"],
+            #     gnss_data["speed"],
+            # )
 
             create_map(
-                fused_data["gnss_lat"],
-                fused_data["gnss_lon"],
+                gnss_data["latitude"],
+                gnss_data["longitude"],
+            )
+            create_map(
+                packed_framekm_data["latitude"],
+                packed_framekm_data["longitude"],
             )
 
-            create_map(
-                fused_data["fused_lat"],
-                fused_data["fused_lon"],
-            )
+            # create_map(
+            #     processed_gnss["latitude"],
+            #     processed_gnss["longitude"],
+            # )
+            # create_map(
+            #     fused_data["gnss_lat"],
+            #     fused_data["gnss_lon"],
+            # )
+
+            # create_map(
+            #     fused_data["fused_lat"],
+            #     fused_data["fused_lon"],
+            # )
 
             plt.show()
 
