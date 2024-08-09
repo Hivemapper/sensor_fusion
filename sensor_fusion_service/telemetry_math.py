@@ -86,20 +86,19 @@ def extract_smooth_imu_data(imu_data: List[IMUData], offsets: dict = OFFSETS):
     """
     acc_x, acc_y, acc_z = [], [], []
     gyro_x, gyro_y, gyro_z = [], [], []
-    converted_time, time, temperature, session, row_id = [], [], [], [], []
+    converted_time, time, temperature, session = [], [], [], []
 
     for point in imu_data:
-        acc_x.append(point.ax)
-        acc_y.append(point.ay)
-        acc_z.append(point.az)
-        gyro_x.append(math.radians(point.gx))
-        gyro_y.append(math.radians(point.gy))
-        gyro_z.append(math.radians(point.gz))
+        acc_x.append(point.acc_x)
+        acc_y.append(point.acc_y)
+        acc_z.append(point.acc_z)
+        gyro_x.append(math.radians(point.gyro_x))
+        gyro_y.append(math.radians(point.gyro_y))
+        gyro_z.append(math.radians(point.gyro_z))
         time.append(point.time)
         converted_time.append(convert_time_to_epoch(point.time))
         temperature.append(point.temperature)
         session.append(point.session)
-        row_id.append(point.row_id)
 
     freq = math.floor(calculate_average_frequency(converted_time))
     print(f"IMU data frequency: {freq} Hz")
@@ -149,7 +148,6 @@ def extract_smooth_imu_data(imu_data: List[IMUData], offsets: dict = OFFSETS):
         time,
         temperature,
         session,
-        row_id,
         freq,
         converted_time,
     )

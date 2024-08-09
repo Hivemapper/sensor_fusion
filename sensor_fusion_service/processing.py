@@ -82,7 +82,6 @@ def process_raw_data(
         imu_time,
         temperature,
         imu_session,
-        row_id,
         imu_freq,
         imu_converted_time,
     ) = extract_smooth_imu_data(imu_data)
@@ -146,7 +145,6 @@ def process_raw_data(
         "time": imu_time,
         "temperature": temperature,
         "session": imu_session,
-        "row_id": row_id,
     }
     processed_imu_data = convert_columns_to_class_instances(
         processed_imu_dict, ProcessedIMUData

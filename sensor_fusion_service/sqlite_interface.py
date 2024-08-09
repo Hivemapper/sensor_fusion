@@ -13,6 +13,7 @@ if env == "local":
         ProcessedIMUData,
         GNSSData,
         MagData,
+        FrameKMData,
         FusedPositionData,
         PURGE_GROUP,
     )
@@ -22,6 +23,7 @@ else:
         ProcessedIMUData,
         GNSSData,
         MagData,
+        FrameKMData,
         FusedPositionData,
         PURGE_GROUP,
     )
@@ -61,6 +63,7 @@ class SqliteInterface:
         self.cursor = self.connection.cursor()
         self.data_logger_path = data_logger_path
 
+    @retry()
     def get_db_size(self) -> int:
         """
         Returns the size of the SQLite database file in bytes.
@@ -155,7 +158,6 @@ class SqliteInterface:
             create_imu_table_sql = """
             CREATE TABLE IF NOT EXISTS imu_processed (
                         id INTEGER NOT NULL PRIMARY KEY,
-                        row_id INTEGER NOT NULL,
                         time TIMESTAMP NOT NULL,
                         acc_x REAL NOT NULL,
                         acc_y REAL NOT NULL,
@@ -214,6 +216,7 @@ class SqliteInterface:
             print(f"An error occurred while creating the error log table: {e}")
             self.connection.rollback()
 
+    @retry()
     def create_error_logs_table(self):
         """
         Creates the error_logs table in the database if it does not already exist,
@@ -249,6 +252,7 @@ class SqliteInterface:
             )
             self.connection.rollback()
 
+    @retry()
     def create_fused_position_table(self):
         """
         Creates the fused position table in the database if it does not already exist.
@@ -297,6 +301,7 @@ class SqliteInterface:
             print(f"An error occurred while writing to the error table: {e}")
             self.connection.rollback()
 
+    @retry()
     def insert_data(
         self,
         table_name,
@@ -448,92 +453,6 @@ class SqliteInterface:
             return None
 
     @retry()
-    def get_raw_imu_by_row_range(self, start_id: int, end_id: int, order: str = "ASC"):
-        """
-        Queries the IMU table for accelerometer and gyroscope data for rows within a specified ID range
-        and sorts by row ID.
-        Columns queried: acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, time, temperature, session.
-
-        Args:
-            start_id (int): The starting row ID for the query.
-            end_id (int): The ending row ID for the query.
-            order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'ASC'.
-
-        Returns:
-            list: A list of IMUData objects containing the accelerometer and gyroscope data.
-        """
-        try:
-            query = f"""
-                        SELECT acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, time, temperature, session, id
-                        FROM imu
-                        WHERE id BETWEEN ? AND ?
-                        ORDER BY id {order}
-                    """
-            rows = self.cursor.execute(query, (start_id, end_id)).fetchall()
-            results = [
-                IMUData(
-                    row[0],
-                    row[1],
-                    row[2],
-                    row[3],
-                    row[4],
-                    row[5],
-                    row[6],
-                    row[7],
-                    row[8],
-                    row[9],
-                )
-                for row in rows
-            ]
-            return results
-
-        except sqlite3.Error as e:
-            print(
-                f"An error occurred while querying the IMU table for rows {start_id} to {end_id}: {e}"
-            )
-            return []
-
-    @retry()
-    def get_gnss_by_row_range(self, start_id: int, end_id: int, order: str = "ASC"):
-        """
-        Queries the GNSS table for GNSS data for rows within a specified ID range
-        and sorts by row ID.
-
-        Args:
-            start_id (int): The starting row ID for the query.
-            end_id (int): The ending row ID for the query.
-            order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'ASC'.
-
-        Returns:
-            list: A list of GNSSData objects containing the GNSS data.
-        """
-        try:
-            query = f"""
-                        SELECT * 
-                        FROM gnss
-                        WHERE id BETWEEN ? AND ?
-                        ORDER BY id {order}
-                    """
-            rows = self.cursor.execute(query, (start_id, end_id)).fetchall()
-
-            column_names = [description[0] for description in self.cursor.description]
-
-            # Remove the 'id' column name if it's present
-            if "id" in column_names:
-                column_names.remove("id")
-
-            # Map rows to GNSSData objects, excluding the 'id' column
-            results = [GNSSData(**dict(zip(column_names, row[1:]))) for row in rows]
-
-            return results
-
-        except sqlite3.Error as e:
-            print(
-                f"An error occurred while querying the GNSS table for rows {start_id} to {end_id}: {e}"
-            )
-            return []
-
-    @retry()
     def get_nearest_row_id_to_time(
         self, tableName: str, desiredTime: str, session: str = None
     ):
@@ -675,174 +594,126 @@ class SqliteInterface:
             print(f"An error occurred while retrieving unique values: {e}")
             return []
 
-    ####  All Data Query Functions ####
-    def queryAllImu(self, order: str = "ASC"):
+    @retry()
+    def get_data_by_row_range(
+        self,
+        table_name: str,
+        data_class: Union[
+            GNSSData, IMUData, ProcessedIMUData, MagData, FusedPositionData, FrameKMData
+        ],
+        start_id: int,
+        end_id: int,
+        order: str = "ASC",
+    ) -> List[
+        Union[
+            GNSSData, IMUData, ProcessedIMUData, MagData, FusedPositionData, FrameKMData
+        ]
+    ]:
         """
-        Queries the whole IMU table for accelerometer and gyroscope data and sorts by row ID.
-        Columns queried acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, time
-        Args:
-            order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'DESC'.
-        Returns:
-            list: A list of IMUData objects containing the accelerometer and gyroscope data.
-        """
-        try:
-            query = """
-                        SELECT acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, time, temperature, session, id
-                        FROM imu 
-                        ORDER BY id {}
-                    """.format(order)
-            rows = self.cursor.execute(query).fetchall()
-            results = [
-                IMUData(
-                    row[0],
-                    row[1],
-                    row[2],
-                    row[3],
-                    row[4],
-                    row[5],
-                    row[6],
-                    row[7],
-                    row[8],
-                    row[9],
-                )
-                for row in rows
-            ]
-            return results
-        except sqlite3.Error as e:
-            print(f"SQLite error: {e}")
-            return []
+        Queries the specified table for data within a specified ID range, sorts by row ID, and returns the data as a list of objects of the specified class.
+        The columns queried depend on the data_class specified.
 
-    def queryAllProcessedImu(self, order: str = "ASC"):
-        """
-        Queries the whole IMU table for accelerometer and gyroscope data and sorts by row ID.
-        Columns queried acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, time
         Args:
-            order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'DESC'.
-        Returns:
-            list: A list of ProcessedIMUData objects containing the accelerometer and gyroscope data.
-        """
-        try:
-            query = """
-                        SELECT acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, time, temperature, session, stationary, id
-                        FROM imu_processed 
-                        ORDER BY id {}
-                    """.format(order)
-            rows = self.cursor.execute(query).fetchall()
-            results = [
-                ProcessedIMUData(
-                    row[0],
-                    row[1],
-                    row[2],
-                    row[3],
-                    row[4],
-                    row[5],
-                    row[6],
-                    row[7],
-                    row[8],
-                    row[9],
-                    row[10],
-                )
-                for row in rows
-            ]
-            return results
-        except sqlite3.Error as e:
-            print(f"SQLite error: {e}")
-            return []
-
-    def queryAllMagnetometer(self, order: str = "ASC"):
-        """
-        Queries the magnetometer table for magnetometer data and sorts by row ID.
-        Columns queried mag_x, mag_y, mag_z, system_time
-        Args:
-            order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'DESC'.
-        Returns:
-            list: A list of MagnetometerData objects containing the magnetometer data.
-        """
-        try:
-            query = """
-                        SELECT mag_x, mag_y, mag_z, system_time, session
-                        FROM magnetometer
-                        ORDER BY id {}
-                    """.format(order)
-            rows = self.cursor.execute(query).fetchall()
-            results = [MagData(row[0], row[1], row[2], row[3], row[4]) for row in rows]
-            return results
-        except sqlite3.Error as e:
-            print(f"SQLite error: {e}")
-            return []
-
-    def queryAllGnss(self, order: str = "ASC"):
-        """
-        Queries the GNSS table for all GNSS data and sorts by row ID.
-        Columns queried latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, system_time, time, time_resolved, session
-        Args:
-            order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'DESC'.
-        Returns:
-            list: A list of GNSSData objects containing the GNSS data.
-        """
-        try:
-            query = """
-                        SELECT latitude, longitude, altitude, speed, heading, heading_accuracy, hdop, gdop, system_time, time, time_resolved, session
-                        FROM gnss 
-                        ORDER BY id {}
-                    """.format(order)
-            rows = self.cursor.execute(query).fetchall()
-            results = [
-                GNSSData(
-                    row[0],
-                    row[1],
-                    row[2],
-                    row[3],
-                    row[4],
-                    row[5],
-                    row[6],
-                    row[7],
-                    row[8],
-                    row[9],
-                    row[10],
-                    row[11],
-                )
-                for row in rows
-            ]
-            return results
-        except sqlite3.Error as e:
-            print(f"SQLite error: {e}")
-            return []
-
-    def queryAllFusedPosition(self, order: str = "ASC"):
-        """
-        Queries the whole fused_position table and sorts by row ID.
-        Columns queried: id, time, gnss_lat, gnss_lon, fused_lat, fused_lon, fused_heading, forward_velocity, yaw_rate, session.
-        Args:
+            table_name (str): The name of the table to query.
+            data_class: The class type to instantiate for each row.
+            start_id (int): The starting row ID for the query.
+            end_id (int): The ending row ID for the query.
             order (str, optional): The order of retrieval, either 'ASC' or 'DESC'. Defaults to 'ASC'.
+
         Returns:
-            list: A list of FusedPositionData objects containing the fused position data.
+            list: A list of objects of the specified class type.
         """
         try:
-            query = """
-                        SELECT id, time, gnss_lat, gnss_lon, fused_lat, fused_lon, fused_heading, forward_velocity, yaw_rate, session
-                        FROM fused_position 
-                        ORDER BY id {}
-                    """.format(order)
-            rows = self.cursor.execute(query).fetchall()
-            results = [
-                FusedPositionData(
-                    row[0],  # id
-                    row[1],  # time
-                    row[2],  # gnss_lat
-                    row[3],  # gnss_lon
-                    row[4],  # fused_lat
-                    row[5],  # fused_lon
-                    row[6],  # fused_heading
-                    row[7],  # forward_velocity
-                    row[8],  # yaw_rate
-                    row[9],  # session
+            # SQL command to select rows within a specified ID range from the table
+            query = f"""
+                        SELECT * FROM {table_name}
+                        WHERE id BETWEEN ? AND ?
+                        ORDER BY id {order}
+                    """
+
+            # Execute the SQL command
+            rows = self.cursor.execute(query, (start_id, end_id)).fetchall()
+
+            # Get the column names from the cursor description
+            column_names = [desc[0] for desc in self.cursor.description]
+
+            # Convert each row to an instance of the data_class
+            data_list = [
+                data_class(
+                    **{
+                        col: val
+                        for col, val in zip(column_names, row)
+                        if col not in ["id", "row_id"]
+                    }
                 )
                 for row in rows
             ]
-            return results
+
+            return data_list
+
         except sqlite3.Error as e:
-            print(f"SQLite error: {e}")
+            # Handle any SQLite errors
+            print(
+                f"An error occurred while querying the {table_name} table for rows {start_id} to {end_id}: {e}"
+            )
+            return []
+
+    @retry()
+    def read_all_table_data(
+        self,
+        table_name: str,
+        data_class: Union[
+            GNSSData, IMUData, ProcessedIMUData, MagData, FusedPositionData, FrameKMData
+        ],
+    ) -> List[
+        Union[
+            GNSSData, IMUData, ProcessedIMUData, MagData, FusedPositionData, FrameKMData
+        ]
+    ]:
+        """
+        Reads all rows from the specified table and returns them as a list of objects of the specified class.
+
+        Args:
+            table_name (str): The name of the table to read data from.
+            data_class: The class type to instantiate for each row.
+
+        Returns:
+            list: A list of objects of the specified class type.
+        """
+        # print(f"Reading data from {table_name} table...")
+        try:
+            # SQL command to select all rows from the table
+            if data_class == FrameKMData:
+                select_data_sql = f"SELECT * FROM {table_name} ORDER BY fkm_id ASC;"
+            else:
+                select_data_sql = f"SELECT * FROM {table_name} ORDER BY id ASC;"
+
+            # Execute the SQL command
+            self.cursor.execute(select_data_sql)
+            rows = self.cursor.fetchall()
+            # print(f"Read {len(rows)} rows from {table_name} table.")
+
+            # Get the column names from the cursor description
+            column_names = [desc[0] for desc in self.cursor.description]
+            # print(f"Column names: {column_names}")
+
+            # Convert each row to an instance of the data_class, excluding the 'id' column
+            data_list = [
+                data_class(
+                    **{
+                        col: val
+                        for col, val in zip(column_names, row)
+                        if col not in ["id", "row_id"]
+                    }
+                )
+                for row in rows
+            ]
+
+            return data_list
+
+        except sqlite3.Error as e:
+            # Handle any SQLite errors
+            print(f"An error occurred while reading data from {table_name}: {e}")
             return []
 
     ################# Table Level Functions #################
@@ -1007,6 +878,7 @@ class SqliteInterface:
             self.service_log_msg("Purging DB", str(e))
             return False
 
+    @retry()
     def vacuum(self):
         """
         Reclaims the unused space in the database file and reduces its size.
