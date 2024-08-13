@@ -282,7 +282,7 @@ if __name__ == "__main__":
 
     print("Waiting for Sensor Fusion Service to start ...")
     # This is for letting system set up everything before starting the main loop
-    time.sleep(5)
+    time.sleep(10)
     print("Starting Sensor Fusion Service ...")
     if debug_mode:
         print(f"Using {db_path} for local testing")
