@@ -721,7 +721,7 @@ def get_horizontal_range_of_top_sections(top_sections, grid_size):
 #     return True
 
 
-def undistort_via_exif(img_path, out_path, verbose=False):
+def undistort_image(img_path, out_path, verbose=False):
     if verbose:
         print(f"Undistorting {img_path}...")
 
@@ -733,11 +733,13 @@ def undistort_via_exif(img_path, out_path, verbose=False):
     k4 = 0.0
     tags = {}
 
-    with ExifToolHelper() as et:
-        tags = et.get_tags(img_path, [])[0]
-        # print(tags)
+    # with ExifToolHelper() as et:
+    #     tags = et.get_tags(img_path, [])[0]
+    # print(tags)
 
     img = cv2.imread(img_path)
+    if img is None:
+        raise ValueError(f"Failed to read image from {img_path}")
     h, w = img.shape[:2]
 
     # Camera matrix
@@ -771,13 +773,26 @@ def undistort_via_exif(img_path, out_path, verbose=False):
 
     if verbose:
         print(f"Writing {out_path}...")
-    cv2.imwrite(out_path, dst)
 
-    with ExifToolHelper() as et:
-        tags = {k: tags[k] for k in TAGS_TO_KEEP if k in tags}
-        if verbose:
-            print(f"Encoding exif tags from {img_path} to {out_path}...")
-        et.set_tags([out_path], tags=tags, params=["-overwrite_original"])
+    if not os.path.exists(os.path.dirname(out_path)):
+        try:
+            os.makedirs(os.path.dirname(out_path))
+        except OSError as e:
+            raise IOError(
+                f"Failed to create directory {os.path.dirname(out_path)}: {e}"
+            )
+    if dst is None or dst.size == 0:
+        raise ValueError(f"Invalid image data for {out_path}.")
+
+    success = cv2.imwrite(out_path, dst)
+    if not success:
+        raise IOError(f"Failed to write image to {out_path}")
+
+    # with ExifToolHelper() as et:
+    #     tags = {k: tags[k] for k in TAGS_TO_KEEP if k in tags}
+    #     if verbose:
+    #         print(f"Encoding exif tags from {img_path} to {out_path}...")
+    #     et.set_tags([out_path], tags=tags, params=["-overwrite_original"])
 
     return True
 

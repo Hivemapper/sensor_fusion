@@ -66,7 +66,7 @@ def calculate_bearings(coordinates):
     return bearings
 
 
-def check_straight_line_segments(coordinates, threshold=3):
+def check_straight_line_segments(coordinates, threshold=2):
     """
     Check for continuous straight-ish portions of a GNSS coordinate path.
     Returns a list of index ranges where the standard deviation of bearings is below a specified threshold.

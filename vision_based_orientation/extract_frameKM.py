@@ -88,10 +88,10 @@ if __name__ == "__main__":
         description="Extract images from a hex-encoded file"
     )
     parser.add_argument(
-        "input_dir", type=str, help="Path to the hex-encoded input file"
+        "--input_dir", type=str, help="Path to the hex-encoded input file"
     )
     parser.add_argument(
-        "output_dir", type=str, help="Directory to save the extracted images"
+        "--output_dir", type=str, help="Directory to save the extracted images"
     )
 
     args = parser.parse_args()

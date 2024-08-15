@@ -209,6 +209,12 @@ def main(file_path):
                 gnss_data["latitude"],
                 gnss_data["longitude"],
             )
+
+            create_map(
+                processed_gnss["latitude"],
+                processed_gnss["longitude"],
+            )
+
             create_map(
                 packed_framekm_data["latitude"],
                 packed_framekm_data["longitude"],
