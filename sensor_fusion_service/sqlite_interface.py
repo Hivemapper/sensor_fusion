@@ -34,7 +34,7 @@ DESC = "DESC"
 ASC = "ASC"
 
 # Purging Constants
-DB_SIZE_LIMIT = 1024 * 1024 * 200  # 200 MB
+DB_SIZE_LIMIT = 1024 * 1024 * 100  # 100 MB
 
 
 # Function decorator to retry a function a specified number of times with a delay between each attempt
