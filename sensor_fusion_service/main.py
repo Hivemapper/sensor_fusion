@@ -60,10 +60,10 @@ def table_and_initial_index_setup(db: SqliteInterface, debug: bool = False):
         db.drop_table(TableName.SENSOR_FUSION_LOG_TABLE.value)
         db.drop_table(TableName.GNSS_PROCESSED_TABLE.value)
     ########### Setup service tables, check columns, grab starting indexes for raw data processing ###########
-    if not db.check_table_exists(TableName.ERROR_LOG_TABLE.value):
-        print(f"Table {TableName.ERROR_LOG_TABLE.value} does not exist")
-        db.create_error_logs_table()
-        print("Table created")
+    # if not db.check_table_exists(TableName.ERROR_LOG_TABLE.value):
+    #     print(f"Table {TableName.ERROR_LOG_TABLE.value} does not exist")
+    #     db.create_error_logs_table()
+    #     print("Table created")
 
     if not db.check_table_exists(TableName.SENSOR_FUSION_LOG_TABLE.value):
         print(f"Table {TableName.SENSOR_FUSION_LOG_TABLE.value} does not exist")
