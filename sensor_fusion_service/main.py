@@ -136,13 +136,13 @@ def main(db_path: str, debug: bool = False):
     if debug:
         loop_counter = 0
 
-    loop_time = time.time()
+    # loop_time = time.time()
     while 1:
         ########### Purge DB if required ###########
         # Check every minute if the db needs to be purged
-        if loop_time + 60 < time.time():
-            db.purge()
-            loop_time = time.time()
+        # if loop_time + 60 < time.time():
+        #     db.purge()
+        #     loop_time = time.time()
 
         ########### Check for enough Data for Processing ###########
         ### Find where to start raw index
